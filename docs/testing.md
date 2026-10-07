@@ -1,5 +1,20 @@
 # Testing
 
+## Busy-indicator recovery fix
+
+The current suite has 70 passing tests. New observer/controller regressions
+first reproduced two missed-recovery mechanisms: an old interrupt hint before
+a terminal error, and a failed turn whose exact message was `request timed out`.
+A separate failing case covered the timeout's terminal display. The fixes
+preserve refusal during genuine current activity, drafts, explicit pauses,
+approval prompts and unrecognized failures.
+
+The X11 adapter explicitly activates an already-focused target before typing.
+One real watcher-to-X11 fixture run against the corrected source received
+exactly `/goal resume` and one Enter in 1.722 seconds. It used an owned test
+window and scripted connectivity. Automatic recovery into a live Codex turn
+remains unverified. See [the bounded result](busy-recovery-verification.json).
+
 ## Automated tests
 
 From the repository directory:

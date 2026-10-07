@@ -18,7 +18,7 @@ import types
 from unittest.mock import patch
 
 SOURCE = Path(__file__).resolve().parents[1] / "scripts/codex_reconnect_toggle.py"
-SOURCE_SHA = "85af79224558d04816d5d094bfd9ffaff955ea8295bcd9bdb46d71ab53bf9b93"
+SOURCE_SHA = "d4bb6e45b407d6d3110333d1a1b032d7b790202a58b8b29e57e2a461d3a8a2d2"
 REAL_CLOCK = time.monotonic
 REAL_SLEEP = time.sleep
 

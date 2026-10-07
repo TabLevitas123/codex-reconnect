@@ -25,5 +25,9 @@
     "failed": 0,
     "virtual_clock": true,
     "historical_focused_suite_rerun": false
+  },
+  "latest_recovery_fix": {
+    "record": "busy-recovery-verification.json",
+    "sha256": "63bf186bb12d3b80c22a250823ca3881a750fa943b24c559b62e5e6c80106796"
   }
 }

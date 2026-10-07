@@ -57,7 +57,7 @@ class Readiness:
             if name not in ("target", "command_pending", "composer_idle", "desktop_idle", "goal_id", "stall_kind", "incident_id") and getattr(self, name) is not True:
                 if name == "idle" and self.idle is False:
                     if self.composer_idle is False:
-                        return "Blocked: Codex composer busy"
+                        return "Waiting: Codex is working"
                     if self.desktop_idle is False:
                         return "Blocked: desktop input within 30 seconds"
                 return "Blocked: " + name.replace("_", " ")
@@ -441,6 +441,8 @@ def resumable_turn(codex_dir: Path, thread_id: str) -> tuple[str | None, str | N
         # This CLI reports the verified remote-compaction timeout as `other`.
         # Match its complete diagnostic in memory; never generalize `other`.
         message = error.get("message")
+        if message == "request timed out":
+            return "transport", turn_id
         if isinstance(message, str) and re.fullmatch(
             r"Error running remote compact task: stream disconnected before completion: Transport error: timeout",
             message,
@@ -531,11 +533,12 @@ def parse_composer(text: str, caret: int, expected_input: str = "") -> Composer:
     transport_errors = list(re.finditer(
         r"(?:^|\n)\s*(?:■|error:|⚠)\s*[^\n]*(?:network|"
         r"connection.*(?:lost|failed|closed)|stream.*(?:disconnect|error)|"
-        r"retries exhausted|transport.*error|error sending request)[^\n]*", recent))
-    # Retry messages before a terminal error are history. The explicit live
-    # interrupt hint always blocks, including when an older error is visible.
+        r"retries exhausted|transport.*error|error sending request)[^\n]*|"
+        r"(?:^|\n)[ \t]*■[ \t]*request timed out[ \t]*(?=\n|$)", recent))
+    # Activity before the latest terminal transport error belongs to history.
+    # Activity after that error still blocks, including an interrupt hint.
     current_status = recent[transport_errors[-1].end():] if transport_errors else recent
-    busy = "esc to interrupt" in recent or bool(re.search(
+    busy = "esc to interrupt" in current_status or bool(re.search(
         r"(?:^|\n)\s*[•●]?\s*(?:working|thinking|connecting|reconnecting|running)(?:\s|\.)",
         current_status))
     modal = bool(re.search(r"approve|approval|allow this|press enter to continue|"

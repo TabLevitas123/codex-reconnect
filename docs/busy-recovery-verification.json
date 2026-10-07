@@ -1,0 +1,38 @@
+{
+  "date": "2026-10-07",
+  "source_sha256": "d4bb6e45b407d6d3110333d1a1b032d7b790202a58b8b29e57e2a461d3a8a2d2",
+  "tests_sha256": "028bf58130d696b2d4b942a72984fd493b597d392f41c78d9d1aaf3ae24229a5",
+  "fixture_sha256": "37cecb5235a71821afde214de7c93501ed2d5f77f3010d8efb83cdcda31a06fa",
+  "focused_tests": {
+    "passed": 70,
+    "failed": 0,
+    "command": "/usr/bin/python3 tests/test_codex_reconnect_toggle.py",
+    "independent_review": "PASS; 70 tests independently rerun on functional fix; final label-only delta checked"
+  },
+  "red_regressions": {
+    "initial_pipeline_failures": 2,
+    "terminal_timeout_line_failures": 1
+  },
+  "source_review_sha256": "7cb2496736545d8740714daf3801cdac18034dfa4961cd5ff24fcac53dd882d1",
+  "X11_fixture": {
+    "status": "PASS",
+    "real_wall_seconds": 1.7215526059735566,
+    "received": [
+      "/goal resume"
+    ],
+    "returns": 1,
+    "already_focused_target": true,
+    "fixture_history_unchanged": true,
+    "worker_joined": true,
+    "owned_window_closed": true,
+    "receipt_sha256": "8b9dd1816ef844f81f4f9c646a8e887eaa152f975122ea4751306384ddbd5088",
+    "limits": [
+      "Synthetic fixture only, not natural automatic recovery",
+      "No run_ui generation/queue or GNOME/TTY qualification",
+      "No provider, live Codex DB, native goal or actual continuation proof"
+    ]
+  },
+  "installation": "Restarted with corrected source; ON control and working label visibly verified",
+  "natural_outage_to_live_Codex_continuation": "UNVERIFIED",
+  "privacy": "No private target bindings, terminal contents or credentials in public evidence"
+}

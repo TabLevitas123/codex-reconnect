@@ -255,7 +255,7 @@ class VisibleComposerTests(unittest.TestCase):
             text, caret = self.text(before="■ stream disconnected before completion: error sending request\n" + busy + "\n")
             self.assertFalse(mod.parse_composer(text, caret).idle)
         text, caret = self.text(before="Working (esc to interrupt)\n■ stream disconnected before completion: error sending request\n")
-        self.assertFalse(mod.parse_composer(text, caret).idle)
+        self.assertTrue(mod.parse_composer(text, caret).idle)
 
     def test_nonerror_prose_cannot_finish_a_busy_retry(self):
         text, caret = self.text(before="Reconnecting... 5/5\nDiscussion of network connection failed errors\n")
@@ -302,6 +302,7 @@ class X11AdapterTests(unittest.TestCase):
         adapter, target, calls = self.adapter()
         result = adapter.resume(target, replace(ready(), target=target))
         self.assertIn("Sent /goal resume", result)
+        self.assertIn(["wmctrl", "-ia", target.window_id], calls)
         self.assertIn(["xdotool", "type", "--delay", "0", "--", "/goal resume"], calls)
         self.assertIn(["xdotool", "key", "Return"], calls)
         self.assertFalse(any("Escape" in command or "ctrl+a" in command for command in calls))
@@ -534,6 +535,7 @@ class TransitionDiagnosticTests(unittest.TestCase):
 
     def test_reports_composer_and_desktop_idle_separately(self):
         self.assertEqual(replace(ready(), idle=False, composer_idle=False, desktop_idle=True).reason_code(TARGET), "composer_busy")
+        self.assertEqual(replace(ready(), idle=False, composer_idle=False, desktop_idle=True).blocker(TARGET), "Waiting: Codex is working")
         self.assertEqual(replace(ready(), idle=False, composer_idle=True, desktop_idle=False).reason_code(TARGET), "desktop_recent_input")
 
     def test_trace_distinguishes_gap_unknown_and_expired_pending(self):
@@ -874,6 +876,66 @@ class IncidentBindingRegressionTests(unittest.TestCase):
                 self.assertEqual(sum('type' in args for args in calls),1 if stage=='enter' else 0)
                 if stage=='activation':self.assertFalse(any(args[0]=='wmctrl' for args in calls))
                 self.assertTrue(result.startswith('Deferred:'),result)
+
+
+class LiveMissRegressionTests(unittest.TestCase):
+    def pipeline(self, before, message='request timed out', info='other',
+                 turn_status='failed', goal_status='blocked', details=None, misalignment=None):
+        import sqlite3
+        text=before+'› Ask Codex to do anything\n? for shortcuts\n'
+        composer=mod.parse_composer(text,text.index('›')+2)
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            error={'codexErrorInfo':info,'message':message,'additionalDetails':details,'misalignment':misalignment}
+            with sqlite3.connect(root/'goals_1.sqlite') as db:
+                db.execute('CREATE TABLE thread_goals(thread_id,goal_id,status,token_budget,tokens_used)')
+                db.execute('INSERT INTO thread_goals VALUES(?,?,?,?,?)',(TARGET.thread_id,'goal',goal_status,None,0))
+                db.execute('CREATE TABLE thread_goal_continuation_deferrals(thread_id)')
+            with sqlite3.connect(root/'thread_history_1.sqlite') as db:
+                db.execute('CREATE TABLE thread_turns(thread_id,turn_id,status,error_json,rollout_ordinal)')
+                db.execute('INSERT INTO thread_turns VALUES(?,?,?,?,?)',(TARGET.thread_id,'turn',turn_status,json.dumps(error),1))
+            with sqlite3.connect(root/'queue_1.sqlite') as db:
+                db.execute('CREATE TABLE queued_items(thread_id)')
+            observer=object.__new__(mod.LiveObserver)
+            observer.target,observer.codex_dir,observer.binding=TARGET,root,'fixture-binding'
+            observer.reset_cycle()
+            observer.current_goal_id,observer.baseline_goal='goal','goal'
+            cycle=mod.ReconnectCycle();cycle.enable(True)
+            actuator=MockActuator();controller=mod.Controller(TARGET,cycle,actuator,ready_seconds=3)
+            with patch.object(observer,'identity_ok',return_value=True),patch.object(mod,'visible_composer',return_value=composer),patch.object(mod,'desktop_idle_ms',return_value=40000),patch.object(mod,'internet_online',return_value=True),patch.object(mod.time,'monotonic') as clock:
+                for now in range(0,12,2):
+                    clock.return_value=now
+                    controller.accept(observer.observe(),now)
+            return len(actuator.calls),composer.idle
+
+    def test_stale_interrupt_before_terminal_error_clears_through_real_pipeline(self):
+        error='■ stream disconnected before completion: error sending request\n'
+        calls,idle=self.pipeline('Working (esc to interrupt)\n'+error,info='serverOverloaded')
+        self.assertTrue(idle)
+        self.assertEqual(calls,1)
+        for current in ('Working (esc to interrupt)','Reconnecting... 1/5','Thinking...'):
+            calls,idle=self.pipeline(error+current+'\n',info='serverOverloaded')
+            self.assertFalse(idle)
+            self.assertEqual(calls,0)
+
+    def test_exact_timeout_terminal_line_orders_use_joined_observer(self):
+        error='■ request timed out\n'
+        self.assertEqual(self.pipeline('Working (esc to interrupt)\n'+error), (1,True))
+        self.assertEqual(self.pipeline(error+'Working (esc to interrupt)\n'), (0,False))
+        for unknown in ('Discussion: request timed out\n', '■ request timed out; policy refusal\n'):
+            self.assertEqual(self.pipeline('Working (esc to interrupt)\n'+unknown)[0],0)
+
+    def test_exact_request_timeout_admits_but_protected_or_unknown_remain_blocked(self):
+        error='■ stream disconnected before completion: error sending request\n'
+        self.assertEqual(self.pipeline(error)[0],1)
+        for changes in ({'message':'request timed out; HTTP 401'}, {'message':'unknown failure'},
+                        {'message':'request timed out; policy refusal'}, {'message':'request timed out; quota'},
+                        {'message':'request timed out; user interrupted'}, {'message':'Request timed out'},
+                        {'info':'unauthorized'}, {'details':'unknown'}, {'misalignment':{}},
+                        {'turn_status':'inProgress'}, {'turn_status':'interrupted'},
+                        {'goal_status':'paused'}, {'goal_status':'complete'}):
+            self.assertEqual(self.pipeline(error,**changes)[0],0,changes)
+        self.assertEqual(self.pipeline(error+'Approve this command?\n')[0],0)
 
 
 if __name__ == "__main__":

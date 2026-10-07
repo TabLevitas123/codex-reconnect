@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-10-07: stalled-turn recovery
+
+- Ignore historical busy hints preceding a terminal transport error while
+  preserving newer activity checks.
+- Recognize the exact generic timeout diagnostic reported by the checked CLI.
+- Clarify the busy label as `Waiting: Codex is working`.
+- Verify activation of an already-focused target. The suite has 70 passing
+  tests; the corrected watcher also passed one owned X11 integration run.
+- Natural automatic recovery into a live Codex continuation remains unverified.
+
 ## Unreleased
 
 - Add a joined watcher-to-X11 fixture. One scripted-connectivity run delivered
