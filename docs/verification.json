@@ -1,0 +1,20 @@
+{
+  "date": "2026-10-07",
+  "source_sha256": "85af79224558d04816d5d094bfd9ffaff955ea8295bcd9bdb46d71ab53bf9b93",
+  "tests_sha256": "8bbf5f3bd03fe6af951dd8294fccee9f5244665fd511f0ab2d6f0da07047c558",
+  "focused_tests": {
+    "passed": 67,
+    "failed": 0,
+    "command": "/usr/bin/python3 tests/test_codex_reconnect_toggle.py",
+    "independently_rerun": true
+  },
+  "review": "PASS_IN_DOCUMENTED_SCOPE",
+  "real_X11_fixture": "Exact command typed and Enter received; existing input preserved",
+  "live_target_read_only": "Identity verified and busy input refused",
+  "natural_outage_to_live_Codex_continuation": "UNVERIFIED",
+  "supported_desktop": "Ubuntu X11, GNOME, single-tab GNOME Terminal",
+  "Codex_schema_checked": "0.159.2",
+  "privacy": "No personal bindings, logs, terminal text, or credentials in this report",
+  "manual_live_CLI_resume": "Explicit user-requested X11 command changed the same goal from blocked to active",
+  "automatic_watcher_trigger_on_live_CLI": "NOT_YET_OBSERVED"
+}
