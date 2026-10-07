@@ -10,7 +10,10 @@ no API credentials. Its connectivity checks use unauthenticated HTTPS.
 Project: [TabLevitas123/codex-reconnect](https://github.com/TabLevitas123/codex-reconnect).
 
 The initial implementation passed 67 focused tests and independent source
-review. An actual X11 fixture verified command typing and Enter. Recovery
+review. An actual X11 fixture verified command typing and Enter. A further [watcher-to-X11 fixture](docs/testing.md#joined-watcher-to-x11-fixture)
+passed one run using scripted connectivity and a virtual clock. The production
+watcher decision reached the real keyboard adapter and sent one command and
+Enter to an owned window. Independent runtime review passed in this bounded fixture scope. Recovery
 through a natural outage into a live Codex continuation remains unverified.
 
 ## Supported setup

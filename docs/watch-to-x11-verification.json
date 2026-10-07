@@ -1,0 +1,65 @@
+{
+  "schema": "WATCH_TO_X11_PUBLIC_VERIFICATION_V1",
+  "date": "2026-10-07",
+  "status": "PASS_BOUNDED_WATCHER_TO_OWNED_X11_FIXTURE",
+  "result_count": {
+    "passed": 1,
+    "failed": 0
+  },
+  "exit_code": 0,
+  "wall_seconds": 1.8593461369746365,
+  "artifacts": {
+    "scripts/codex_reconnect_toggle.py": "85af79224558d04816d5d094bfd9ffaff955ea8295bcd9bdb46d71ab53bf9b93",
+    "tests/watch_to_x11_fixture.py": "720cb89563665fb2d451919d298994781d6cec4c18828029aa00bd4064d49c17"
+  },
+  "private_result_sha256": "aa17f2f85180017580d83771e319799f5dae2500198c40315d268fe25b10bebc",
+  "production_methods": [
+    "resumable_turn",
+    "LiveObserver.observe",
+    "LiveObserver.readiness",
+    "ConnectivitySchedule",
+    "ReconnectCycle",
+    "Controller",
+    "X11Actuator.resume"
+  ],
+  "clock": "virtual scheduler clock; real actuator clock",
+  "observed": {
+    "offline_probe_virtual_seconds": [
+      2,
+      32,
+      62
+    ],
+    "restored_virtual_second": 62,
+    "dispatch_virtual_second": 66,
+    "dedupe_observed_through_virtual_second": 142,
+    "controller_actions": 1,
+    "received_command": "/goal resume",
+    "return_events": 1,
+    "offline_dispatches": 0,
+    "duplicate_dispatches": 0,
+    "worker_joined": true,
+    "owned_window_closed": true,
+    "private_history_unchanged": true,
+    "synthetic_goal_unchanged": true
+  },
+  "fixture_adapters": [
+    "private synthetic history and goal",
+    "owned-window identity",
+    "Tk composer and scripted idle",
+    "scripted connectivity"
+  ],
+  "limits": [
+    "One synthetic run, not a real thirty-second outage",
+    "Asynchronous UI generation and queue not verified",
+    "GNOME and TTY qualification not exercised",
+    "No provider or live Codex database access",
+    "No native goal mutation or actual continuation proof",
+    "Historical 67 focused tests not rerun",
+    "Prior review and manual live-command proof are separate evidence"
+  ],
+  "privacy": "No personal bindings, host paths, thread identities, window identifiers or process identifiers included",
+  "independent_runtime_review": {
+    "status": "PASS_IN_BOUNDED_FIXTURE_SCOPE",
+    "private_review_sha256": "0aa0d7b67b38ab8cfa2b3252dae805be86cff3700eb72bcc3f6eab9e09edf890"
+  }
+}

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Add a joined watcher-to-X11 fixture. One scripted-connectivity run delivered
+  exactly one `/goal resume` and Enter to its owned window after stable
+  readiness, with no offline or duplicate dispatch. Its virtual clock does
+  not prove a real outage or automatic Codex continuation. Independent runtime review
+  passed in this bounded fixture scope.
+
 Initial standalone local reconnect control:
 
 - Floating dark ON/OFF window, OFF on launch, with a qualified X11 keyboard adapter.

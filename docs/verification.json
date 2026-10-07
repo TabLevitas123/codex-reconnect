@@ -16,5 +16,14 @@
   "Codex_schema_checked": "0.159.2",
   "privacy": "No personal bindings, logs, terminal text, or credentials in this report",
   "manual_live_CLI_resume": "Explicit user-requested X11 command changed the same goal from blocked to active",
-  "automatic_watcher_trigger_on_live_CLI": "NOT_YET_OBSERVED"
+  "automatic_watcher_trigger_on_live_CLI": "NOT_YET_OBSERVED",
+  "watcher_to_real_X11": {
+    "record": "watch-to-x11-verification.json",
+    "record_sha256": "51f2a2b18c7c13f5594b355bf26a6f43273189c82e6ceb207c94a8d96f272e15",
+    "status": "PASS_BOUNDED_WATCHER_TO_OWNED_X11_FIXTURE",
+    "passed": 1,
+    "failed": 0,
+    "virtual_clock": true,
+    "historical_focused_suite_rerun": false
+  }
 }

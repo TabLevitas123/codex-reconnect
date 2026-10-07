@@ -43,6 +43,38 @@ The fixture executes no command and accesses no live Codex state. It proves
 the keyboard adapter path only. Its test button does not simulate the
 production connectivity scheduler; the automated tests exercise that pipeline.
 
+## Joined watcher-to-X11 fixture
+
+The separate `tests/watch_to_x11_fixture.py` joins production turn eligibility,
+observer readiness, connectivity scheduling and controller decisions to the
+real X11 keyboard adapter. It uses private synthetic history and goal data,
+one worker and one owned Tk window. The fixture sends no keys to Codex.
+
+One desktop-owner run passed with exit code 0 in 1.859346 seconds. Scripted
+connectivity produced offline probes at virtual seconds 2, 32 and 62. The
+last probe restored connectivity. Stable readiness allowed one dispatch at
+virtual second 66. The owned text window received exactly `/goal resume` and
+one Enter. No input occurred while offline, and later observations through
+virtual second 142 produced no duplicate dispatch, including after cooldown.
+The worker joined and the owned window closed.
+
+The clock advances virtually. This was not a real thirty-second outage.
+Identity, goal, composer and idle inputs use fixture adapters; connectivity
+is scripted. Production eligibility and readiness methods remain in use.
+The run does not qualify the asynchronous UI queue, GNOME/TTY observation,
+provider behavior, native goal mutation or natural automatic continuation.
+The 67-test historical suite was not rerun for this joined fixture. Prior
+adapter review and the separate manual live-command proof remain separate.
+Independent runtime review passed in this bounded fixture scope. See the redacted
+[watcher verification record](watch-to-x11-verification.json).
+
+A desktop owner can run this bounded fixture in an unlocked X11 session.
+Use a new private receipt path each time:
+
+```bash
+timeout --signal=TERM --kill-after=2s 30s /usr/bin/python3 tests/watch_to_x11_fixture.py --receipt "$XDG_RUNTIME_DIR/watch-to-x11-result.json"
+```
+
 ## Live acceptance
 
 A desktop owner must qualify the exact target according to [usage](usage.md).
