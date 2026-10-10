@@ -2,7 +2,7 @@
 
 ## Busy-indicator recovery fix
 
-The current suite has 70 passing tests. New observer/controller regressions
+The current suite has 72 passing tests. New observer/controller regressions
 first reproduced two missed-recovery mechanisms: an old interrupt hint before
 a terminal error, and a failed turn whose exact message was `request timed out`.
 A separate failing case covered the timeout's terminal display. The fixes
@@ -125,3 +125,14 @@ reported as `other`, with negative checks for altered and protected messages.
 An explicitly requested manual X11 submission of `/goal resume` changed the
 real current goal from blocked to active. This proves the live command route,
 not an automatic watcher trigger or natural outage recovery.
+
+On 2026-10-10, a synthetic SQLite regression reproduced a missed recovery for
+the exact message `stream disconnected before completion: Transport error: timeout`
+with type `other`, null additional details and null misalignment. The real
+composer parser, observer and controller returned no dispatch despite idle
+input. Adding this complete message to eligibility produced one mocked dispatch.
+All 72 tests passed. Altered messages, policy failures, additional details,
+misalignment, newer in-progress turns, protected goals, paused or exhausted
+goals, drafts, approvals and changed target identity still blocked input.
+This verifies the local decision path. Independent review and automatic live
+continuation for this incident remain unverified.

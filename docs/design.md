@@ -45,9 +45,12 @@ Allowed transient types are `serverOverloaded`, `flexUnavailable`,
 variants with HTTP 4xx status remain blocked, including 429. A misalignment
 marker blocks eligibility. Authentication, quota, rate limits, safety/refusal,
 context limits and generic `other` errors do not qualify.
-One exact known remote-compaction transport-timeout message may qualify when
-Codex labels it `other`. The match is case-sensitive and accepts no prefix,
-suffix or additional diagnostic details. Generic `other` errors stay blocked.
+Three exact messages may qualify when Codex labels the failure `other`:
+`request timed out`,
+`stream disconnected before completion: Transport error: timeout`, and
+`Error running remote compact task: stream disconnected before completion: Transport error: timeout`.
+Matches are case-sensitive and accept no prefix, suffix or additional
+diagnostic details. Generic `other` errors stay blocked.
 
 Queue entries, deferred continuation, visible modal/approval states and drafts
 still block typing. A typed failure alone is insufficient. Each goal/turn

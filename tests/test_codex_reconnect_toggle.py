@@ -880,29 +880,35 @@ class IncidentBindingRegressionTests(unittest.TestCase):
 
 class LiveMissRegressionTests(unittest.TestCase):
     def pipeline(self, before, message='request timed out', info='other',
-                 turn_status='failed', goal_status='blocked', details=None, misalignment=None):
+                 turn_status='failed', goal_status='blocked', details=None, misalignment=None,
+                 newer=False, protected=False, identity=True, prompt='Ask Codex to do anything',
+                 token_budget=None, tokens_used=0):
         import sqlite3
-        text=before+'› Ask Codex to do anything\n? for shortcuts\n'
+        text=before+'› '+prompt+'\n? for shortcuts\n'
         composer=mod.parse_composer(text,text.index('›')+2)
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory)
             error={'codexErrorInfo':info,'message':message,'additionalDetails':details,'misalignment':misalignment}
             with sqlite3.connect(root/'goals_1.sqlite') as db:
                 db.execute('CREATE TABLE thread_goals(thread_id,goal_id,status,token_budget,tokens_used)')
-                db.execute('INSERT INTO thread_goals VALUES(?,?,?,?,?)',(TARGET.thread_id,'goal',goal_status,None,0))
+                db.execute('INSERT INTO thread_goals VALUES(?,?,?,?,?)',(TARGET.thread_id,'goal',goal_status,token_budget,tokens_used))
                 db.execute('CREATE TABLE thread_goal_continuation_deferrals(thread_id)')
             with sqlite3.connect(root/'thread_history_1.sqlite') as db:
                 db.execute('CREATE TABLE thread_turns(thread_id,turn_id,status,error_json,rollout_ordinal)')
                 db.execute('INSERT INTO thread_turns VALUES(?,?,?,?,?)',(TARGET.thread_id,'turn',turn_status,json.dumps(error),1))
+                if newer:
+                    db.execute('INSERT INTO thread_turns VALUES(?,?,?,?,?)',(TARGET.thread_id,'new','inProgress',None,2))
             with sqlite3.connect(root/'queue_1.sqlite') as db:
                 db.execute('CREATE TABLE queued_items(thread_id)')
             observer=object.__new__(mod.LiveObserver)
             observer.target,observer.codex_dir,observer.binding=TARGET,root,'fixture-binding'
             observer.reset_cycle()
             observer.current_goal_id,observer.baseline_goal='goal','goal'
+            if protected:
+                observer.protected_goals.add('goal')
             cycle=mod.ReconnectCycle();cycle.enable(True)
             actuator=MockActuator();controller=mod.Controller(TARGET,cycle,actuator,ready_seconds=3)
-            with patch.object(observer,'identity_ok',return_value=True),patch.object(mod,'visible_composer',return_value=composer),patch.object(mod,'desktop_idle_ms',return_value=40000),patch.object(mod,'internet_online',return_value=True),patch.object(mod.time,'monotonic') as clock:
+            with patch.object(observer,'identity_ok',return_value=identity),patch.object(mod,'visible_composer',return_value=composer),patch.object(mod,'desktop_idle_ms',return_value=40000),patch.object(mod,'internet_online',return_value=True),patch.object(mod.time,'monotonic') as clock:
                 for now in range(0,12,2):
                     clock.return_value=now
                     controller.accept(observer.observe(),now)
@@ -924,6 +930,34 @@ class LiveMissRegressionTests(unittest.TestCase):
         self.assertEqual(self.pipeline(error+'Working (esc to interrupt)\n'), (0,False))
         for unknown in ('Discussion: request timed out\n', '■ request timed out; policy refusal\n'):
             self.assertEqual(self.pipeline('Working (esc to interrupt)\n'+unknown)[0],0)
+
+    def test_bare_transport_timeout_recovers_through_real_pipeline(self):
+        message='stream disconnected before completion: Transport error: timeout'
+        error='■ '+message+'\n'
+        self.assertEqual(self.pipeline('Working (esc to interrupt)\n'+error,
+                                       message=message), (1,True))
+        self.assertEqual(self.pipeline(error+'Working (esc to interrupt)\n',
+                                       message=message), (0,False))
+
+    def test_bare_transport_timeout_keeps_exact_match_and_protection(self):
+        message='stream disconnected before completion: Transport error: timeout'
+        error='■ '+message+'\n'
+        for altered in ('Historical note: '+message, message.lower(), message+'\n',
+                        message+'; unauthorized', message+'; policy refusal',
+                        message+'; quota', message+'; user interrupted',
+                        'operation timed out', 'unknown failure', None):
+            with self.subTest(message=altered):
+                self.assertEqual(self.pipeline(error,message=altered)[0],0)
+        for changes in ({'info':'cyberPolicy'}, {'info':'unauthorized'}, {'info':None},
+                        {'details':'extra diagnostic'}, {'details':{}}, {'misalignment':{}},
+                        {'turn_status':'inProgress'}, {'turn_status':'interrupted'},
+                        {'newer':True}, {'goal_status':'paused'}, {'goal_status':'complete'},
+                        {'goal_status':'budget_limited'}, {'goal_status':'usage_limited'},
+                        {'token_budget':10,'tokens_used':10}, {'protected':True},
+                        {'identity':False}, {'prompt':'existing draft'}):
+            with self.subTest(changes=changes):
+                self.assertEqual(self.pipeline(error,message=message,**changes)[0],0)
+        self.assertEqual(self.pipeline(error+'Approve this command?\n',message=message)[0],0)
 
     def test_exact_request_timeout_admits_but_protected_or_unknown_remain_blocked(self):
         error='■ stream disconnected before completion: error sending request\n'

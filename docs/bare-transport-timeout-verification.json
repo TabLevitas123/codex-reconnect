@@ -1,0 +1,26 @@
+{
+  "status": "INDEPENDENTLY_REVIEWED_LOCAL_DECISION_FIX",
+  "cause": "The exact bare transport timeout was missing from the existing narrow transient-error allowlist.",
+  "recognized_message": "stream disconnected before completion: Transport error: timeout",
+  "red": "expected one mocked dispatch; got zero with composer idle",
+  "tests": {
+    "command": "/usr/bin/python3 tests/test_codex_reconnect_toggle.py",
+    "passed": 72,
+    "failed": 0,
+    "author_exit": 0,
+    "independent_reviewer_exit": 0
+  },
+  "source_sha256": {
+    "scripts/codex_reconnect_toggle.py": "1a9a6a55d9aa39b85dc3fbd9c5df3d8f3bcb166c2aa11e353a3e00b800c05ce6",
+    "tests/test_codex_reconnect_toggle.py": "388bd86196363f004303f2c3eb88a0c9994ed32b0fd8a58eb2b62c0b436373fb",
+    "README.md": "86a8b705532c4176e693eb64211c3462ff73bbf74265b23b04b99894918cffae",
+    "docs/design.md": "f70f6b1053aef9cbd07c30ed5705f753d0202e5119799ebf6d00fbac88752ab7",
+    "docs/testing.md": "8ea8dbe8f09f3c0225af84a3705114109edffe216f61180bd8be7e29dc0579ec"
+  },
+  "independent_review_sha256": "ed0ebc038f03ce669612acfb037b08ae672ce70b694fc3c77c668ebaf0f30c0b",
+  "review_findings": 0,
+  "preserved": "Unknown/policy errors, pauses, limits, drafts, approval states, target checks, newest in-progress turns, cooldown and incident deduplication.",
+  "live_application": "Reviewed helper restarted and ON verified with actual X11 click. No Codex process restart.",
+  "verification_limit": "A natural outage followed by automatic real Codex continuation has not yet been observed. Local decision tests use the actual observer/controller with synthetic SQLite and a mocked actuator.",
+  "privacy": "No thread identifiers, process IDs, terminal content, credentials or screenshots in this public receipt."
+}

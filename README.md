@@ -9,9 +9,11 @@ no API credentials. Its connectivity checks use unauthenticated HTTPS.
 
 Project: [TabLevitas123/codex-reconnect](https://github.com/TabLevitas123/codex-reconnect).
 
-The current implementation passes 70 focused tests. Independent review covers
+The current implementation passes 72 focused tests. Independent review covers
 the recovery fix for stale busy indicators and the exact `request timed out`
 failure. The helper activates the terminal even when it already has focus.
+The exact bare transport timeout also passes a synthetic observer/controller
+regression. This change still needs independent review and live verification.
 `Waiting: Codex is working` refers to ongoing work, not a selected input field.
 An actual X11 fixture verified command typing and Enter. A further [watcher-to-X11 fixture](docs/testing.md#joined-watcher-to-x11-fixture)
 passed one run using scripted connectivity and a virtual clock. The production

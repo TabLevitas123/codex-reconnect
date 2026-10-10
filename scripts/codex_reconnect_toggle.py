@@ -438,10 +438,11 @@ def resumable_turn(codex_dir: Path, thread_id: str) -> tuple[str | None, str | N
         return None, turn_id
     info = error.get("codexErrorInfo")
     if info == "other" and error.get("additionalDetails") is None:
-        # This CLI reports the verified remote-compaction timeout as `other`.
-        # Match its complete diagnostic in memory; never generalize `other`.
+        # This CLI reports these verified timeout diagnostics as `other`.
+        # Match complete messages in memory; never generalize `other`.
         message = error.get("message")
-        if message == "request timed out":
+        if message in ("request timed out",
+                       "stream disconnected before completion: Transport error: timeout"):
             return "transport", turn_id
         if isinstance(message, str) and re.fullmatch(
             r"Error running remote compact task: stream disconnected before completion: Transport error: timeout",
