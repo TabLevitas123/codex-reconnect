@@ -34,9 +34,10 @@ the latest failed or completed turn. It reads SQLite in read-only mode.
 | Latest turn and goal | Eligibility |
 | --- | --- |
 | Completed turn, active goal | Can qualify after thirty seconds of continuously safe idle observations. |
+| Blocked goal and latest failed turn with an ordinary technical error | Can qualify without exact transport wording, with three-second readiness debounce and all guards below. |
 | Failed turn with an allowlisted typed transient | Can qualify after three seconds of consistent readiness with the same online baseline. |
 | Newer in-progress turn | Blocks, even if the goal still reports blocked. |
-| Interrupted turn, unknown error or missing metadata | Blocks. |
+| Interrupted turn, ambiguous stop or missing metadata | Blocks. |
 | Paused, limited, complete or protected goal | Blocks. |
 
 Allowed transient types are `serverOverloaded`, `flexUnavailable`,
@@ -44,13 +45,14 @@ Allowed transient types are `serverOverloaded`, `flexUnavailable`,
 `responseStreamDisconnected` and `responseTooManyFailedAttempts`. Connection
 variants with HTTP 4xx status remain blocked, including 429. A misalignment
 marker blocks eligibility. Authentication, quota, rate limits, safety/refusal,
-context limits and generic `other` errors do not qualify.
-Three exact messages may qualify when Codex labels the failure `other`:
+context limits remain blocked. For an active goal, generic `other` errors still need one of the exact transport signatures below.
+Four exact messages may qualify when Codex labels the failure `other`:
 `request timed out`,
 `stream disconnected before completion: Transport error: timeout`, and
-`Error running remote compact task: stream disconnected before completion: Transport error: timeout`.
+`Error running remote compact task: stream disconnected before completion: Transport error: timeout`, and
+`Error running remote compact task: stream disconnected before completion: Transport error: network error: error decoding response body`.
 Matches are case-sensitive and accept no prefix, suffix or additional
-diagnostic details. Generic `other` errors stay blocked.
+diagnostic details. Other errors outside the blocked-goal ordinary-failure lane stay blocked.
 
 Queue entries, deferred continuation, visible modal/approval states and drafts
 still block typing. A typed failure alone is insufficient. Each goal/turn
@@ -95,3 +97,11 @@ crashed sessions and unattended login recovery are unsupported.
 "Sent /goal resume" confirms the keyboard sequence. It does not verify a new
 Codex turn. Automated tests and a dummy keyboard fixture do not establish
 actual CLI continuation after a real outage.
+
+## Blocked-goal failures and retry ceiling
+
+The goal schema has status and budget fields but no stop reason. BLOCKED alone is insufficient. The new lane requires the latest overall turn to be FAILED with type `other`, a nonempty message, null additional details and null misalignment. Unfamiliar technical wording may qualify. Required input or decisions, approval, pause, limit, security, refusal, authentication, quota, context exhaustion and user-interruption wording block before failure eligibility. Missing or ambiguous metadata, interrupted turns, blocked completed turns and newer in-progress turns remain blocked. This does not make every error recoverable.
+
+A terminal error boundary ends preceding historical activity, including the existing warning transport markers. Activity after the newest boundary still blocks. Rendering grants no eligibility by itself; goal and latest-turn metadata remain required.
+
+The controller permits at most two consecutive automatic dispatches per goal. A newly observed safe completed ACTIVE turn resets the counter once. Explicit OFF→ON also rearms it. Neither clears protected goals, consumed incidents or cooldown. Confirmed zero-input deferrals refund their charged incident once; uncertain or partial effects remain charged. Completed metadata does not prove useful work. The counter lives in the running helper and does not persist across a restart.

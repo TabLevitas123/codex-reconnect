@@ -18,7 +18,7 @@ import types
 from unittest.mock import patch
 
 SOURCE = Path(__file__).resolve().parents[1] / "scripts/codex_reconnect_toggle.py"
-SOURCE_SHA = "d4bb6e45b407d6d3110333d1a1b032d7b790202a58b8b29e57e2a461d3a8a2d2"
+SOURCE_SHA = "1953e755dedc37046b608772758542db29e9536e7e0f414262b9ec275347519a"
 REAL_CLOCK = time.monotonic
 REAL_SLEEP = time.sleep
 
@@ -43,7 +43,9 @@ def history_fixture(directory, status):
     with sqlite3.connect(path) as db:
         db.execute("CREATE TABLE thread_turns (thread_id TEXT, turn_id TEXT, "
                    "status TEXT, error_json TEXT, rollout_ordinal INTEGER)")
-        error = json.dumps({"codexErrorInfo": "serverOverloaded", "misalignment": None}) if status == "failed" else None
+        error = json.dumps({"codexErrorInfo": "other", "additionalDetails": None,
+                            "misalignment": None,
+                            "message": "Unexpected decoder crash while processing a response"}) if status == "failed" else None
         db.execute("INSERT INTO thread_turns VALUES (?,?,?,?,1)",
                    ("owned-synthetic-thread", "owned-synthetic-turn", status, error))
     path.chmod(0o400)
@@ -53,6 +55,7 @@ def history_fixture(directory, status):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--receipt", type=Path, required=True)
+    parser.add_argument("--start-unfocused", action="store_true")
     args = parser.parse_args()
     if args.receipt.exists():
         raise RuntimeError("RECEIPT_ALREADY_EXISTS")
@@ -77,6 +80,14 @@ def main():
     editor.pack(padx=12, pady=12)
     tk.Label(root, text="Synthetic private watcher fixture. No command is executed.",
              bg="#15191f", fg="white").pack()
+    other = None
+    if args.start_unfocused:
+        other = tk.Toplevel(root)
+        other.title("Owned background-focus companion")
+        other.configure(bg="#15191f")
+        other.geometry("560x210")
+        tk.Label(other, text="Owned focus holder. No command input.",
+                 bg="#15191f", fg="white").pack(padx=12, pady=24)
     returns = []
     target = None
     worker = None
@@ -114,6 +125,8 @@ def main():
         root.quit()
 
     root.protocol("WM_DELETE_WINDOW", lambda: cancel("OWNED_WINDOW_CLOSED"))
+    if other is not None:
+        other.protocol("WM_DELETE_WINDOW", lambda: cancel("OWNED_COMPANION_CLOSED"))
     root.after(26000, lambda: cancel("REAL_WALL_TIMEOUT"))
     old_term = signal.signal(signal.SIGTERM, lambda *_: cancel("ROOT_TERMINATION"))
     old_int = signal.signal(signal.SIGINT, lambda *_: cancel("ROOT_INTERRUPTION"))
@@ -156,7 +169,8 @@ def main():
                 def goal_reader(thread_id, directory):
                     if thread_id != target.thread_id or directory not in (active, failed):
                         raise RuntimeError("OUTSIDE_PRIVATE_HISTORY")
-                    return frozen_goal
+                    return (mod.Goal("owned-synthetic-goal", "blocked", None, 0, 0, False)
+                            if directory == failed else frozen_goal)
 
                 def composer(xid, expected_input="", binding=None):
                     if xid != target.window_id or binding is not observer.binding:
@@ -173,34 +187,50 @@ def main():
                 def safe_command(argv):
                     if abort.is_set() or not owned_identity():
                         raise RuntimeError("OWNED_TARGET_IDENTITY_REFUSED")
+                    owned_ids = {target.window_id}
+                    if args.start_unfocused:
+                        owned_ids.add(answers["other_xid"])
+                        if mod.window_pin(answers["other_xid"]) != answers["other_pin"]:
+                            raise RuntimeError("OWNED_COMPANION_IDENTITY_CHANGED")
                     allowed = (argv == ["xdotool", "getactivewindow"]
-                               or argv == ["xdotool", "getwindowname", target.window_id]
-                               or argv == ["wmctrl", "-ia", target.window_id]
+                               or any(argv == ["xdotool", "getwindowname", xid] for xid in owned_ids)
+                               or any(argv == ["wmctrl", "-ia", xid] for xid in owned_ids)
                                or argv == ["xdotool", "type", "--delay", "0", "--", "/goal resume"]
                                or argv == ["xdotool", "key", "Return"])
                     if not allowed:
                         raise RuntimeError("OUTSIDE_OWNED_COMMAND")
                     current = mod.normalized_xid(mod.command(["xdotool", "getactivewindow"]))
-                    if current != target.window_id:
-                        raise RuntimeError("OWNED_TARGET_NOT_ACTIVE")
+                    if current not in owned_ids:
+                        raise RuntimeError("FOCUS_OUTSIDE_OWNED_WINDOWS")
                     if argv[1] in ("type", "key"):
+                        if current != target.window_id:
+                            raise RuntimeError("OWNED_TARGET_NOT_ACTIVE")
                         if not in_controller[0] or controller.action_count != 1:
                             raise RuntimeError("INPUT_NOT_FROM_SINGLE_CONTROLLER_DISPATCH")
                     commands.append(list(argv))
                     value = mod.command(argv)
                     if argv == ["xdotool", "getactivewindow"]:
-                        if mod.normalized_xid(value) != target.window_id:
+                        if mod.normalized_xid(value) not in owned_ids:
                             raise RuntimeError("ACTIVE_TARGET_CHANGED")
-                        # Return normalized own XID so actuator restoration is own-only.
-                        value = target.window_id
+                        value = mod.normalized_xid(value)
                     return value
 
                 class RecordedActuator(mod.X11Actuator):
                     def resume(self, selected, readiness):
                         if selected != target or not in_controller[0]:
                             raise RuntimeError("NON_CONTROLLER_DISPATCH")
-                        dispatch.append({"at": now[0], "incident": readiness.incident_id})
+                        initial_focus = mod.normalized_xid(mod.command(["xdotool", "getactivewindow"]))
+                        expected_initial = answers["other_xid"] if args.start_unfocused else target.window_id
+                        assert initial_focus == expected_initial
+                        dispatch.append({"at": now[0], "incident": readiness.incident_id,
+                                         "started_unfocused": initial_focus != target.window_id})
                         result = super().resume(selected, readiness)
+                        deadline = REAL_CLOCK() + 1
+                        while mod.normalized_xid(mod.command(["xdotool", "getactivewindow"])) != expected_initial:
+                            if abort.is_set() or REAL_CLOCK() >= deadline:
+                                raise RuntimeError("OWNED_OLD_FOCUS_NOT_RESTORED")
+                            REAL_SLEEP(0.01)
+                        dispatch[-1]["old_focus_restored"] = True
                         dispatch[-1]["result"] = result
                         return result
 
@@ -220,7 +250,7 @@ def main():
                      patch.object(mod, "desktop_idle_ms", lambda: 30000), \
                      patch.object(mod, "internet_online", network):
                     assert mod.resumable_turn(active, target.thread_id) == (None, "owned-synthetic-turn")
-                    assert mod.resumable_turn(failed, target.thread_id) == ("transport", "owned-synthetic-turn")
+                    assert mod.resumable_turn(failed, target.thread_id, "blocked") == ("goal_stall", "owned-synthetic-turn")
                     for tick in range(0, 144, 2):
                         if abort.is_set() or REAL_CLOCK() - started > 25:
                             raise RuntimeError("REAL_WALL_TIMEOUT")
@@ -259,7 +289,11 @@ def main():
                     assert (frozen_goal.goal_id, frozen_goal.status, frozen_goal.tokens_used) == ("owned-synthetic-goal", "active", 0)
                     assert {str(p.relative_to(private)): digest(p) for p in files} == fixture_pins
                     assert digest(SOURCE) == SOURCE_SHA
-                    receipt.update(status="PASS", probe_times=probes, observations=observations,
+                    if args.start_unfocused:
+                        activations = [argv[2] for argv in commands if argv[:2] == ["wmctrl", "-ia"]]
+                        assert activations == [target.window_id, answers["other_xid"]]
+                        assert dispatch[0]["started_unfocused"] and dispatch[0]["old_focus_restored"]
+                    receipt.update(status="PASS", start_unfocused=args.start_unfocused, probe_times=probes, observations=observations,
                                    dispatch=dispatch, controller_action_count=1, returns=1,
                                    received=list(values), commands=commands,
                                    private_history_unchanged=True, synthetic_goal_unchanged=True,
@@ -284,9 +318,15 @@ def main():
                 from Xlib import Xatom, display
                 connection = display.Display()
                 try:
-                    client = connection.create_resource_object("window", int(xid))
-                    client.change_property(connection.intern_atom("_NET_WM_PID"),
-                                           Xatom.CARDINAL, 32, [os.getpid()])
+                    owned_xids = [xid]
+                    if other is not None:
+                        answers["other_xid"] = mod.normalized_xid(mod.client_window_id(other.winfo_id()))
+                        assert answers["other_xid"] != xid
+                        owned_xids.append(answers["other_xid"])
+                    for owned_xid in owned_xids:
+                        client = connection.create_resource_object("window", int(owned_xid))
+                        client.change_property(connection.intern_atom("_NET_WM_PID"),
+                                               Xatom.CARDINAL, 32, [os.getpid()])
                     connection.sync()
                 finally:
                     connection.close()
@@ -295,7 +335,15 @@ def main():
                     raise RuntimeError("WINDOW_NOT_OWNED")
                 editor.focus_set()
                 # Initial activation is exclusively this newly created fixture.
-                mod.command(["wmctrl", "-ia", xid])
+                if other is not None:
+                    answers["other_pin"] = mod.window_pin(answers["other_xid"])
+                    assert answers["other_pin"].owner_pid == os.getpid()
+                initial_xid = answers["other_xid"] if other is not None else xid
+                mod.command(["wmctrl", "-ia", initial_xid])
+                deadline = REAL_CLOCK() + 1
+                while mod.normalized_xid(mod.command(["xdotool", "getactivewindow"])) != initial_xid:
+                    if REAL_CLOCK() >= deadline: raise RuntimeError("OWNED_INITIAL_FOCUS_FAILED")
+                    REAL_SLEEP(0.01)
                 receipt["target"] = {"xid": xid, "pid": os.getpid(), "start_ticks": ticks,
                                      "window_title": answers["window_pin"].title}
                 worker = threading.Thread(target=run_worker, name="owned-watcher-worker", daemon=True)
@@ -322,6 +370,9 @@ def main():
                 worker.join(timeout=2)
                 if worker.is_alive():
                     receipt.update(status="FAIL", failure="WORKER_DID_NOT_STOP")
+            if other is not None:
+                other.destroy()
+                receipt["owned_companion_closed"] = True
             root.destroy()
             signal.signal(signal.SIGTERM, old_term)
             signal.signal(signal.SIGINT, old_int)

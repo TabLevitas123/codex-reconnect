@@ -52,11 +52,15 @@ checks run every thirty seconds. Readiness checks continue roughly every two
 seconds, with bounded worker delays. Recovery waits through drafts, busy CLI
 output and recent desktop input; it has no two-minute expiry.
 
-A typed transient failure needs three seconds of consistent readiness. An
+A typed transient or qualified blocked technical failure needs three seconds of consistent readiness. An
 active goal whose latest turn completed needs thirty seconds of safe idle
 observations. Sends have a sixty-second cooldown. Each goal/turn incident gets
 one attempt, except an explicitly confirmed zero-input deferral. OFF, a goal
 change or a protected goal state cancels pending recovery.
+
+Two consecutive automatic attempts stop further retries for the goal. A newly observed safe completed active turn or explicit OFF/ON rearms the counter. Rearm does not clear protected goals, already consumed incidents or the sixty-second cooldown. Confirmed zero-input deferrals do not spend an attempt. The counter is local to the running helper.
+
+The target may be behind other windows or unfocused. The adapter activates the qualified target before typing and restores the previous focus only while both identities and focus remain safe. An owned two-window fixture verified that route; it does not prove arbitrary desktop conditions.
 
 After a successful send, check Codex for actual continuation. If input changes
 after typing, the helper leaves the command unsubmitted. Inspect that input
@@ -70,13 +74,14 @@ yourself before editing or submitting it; the helper never clears it.
 | Composer busy | Codex may be working or reconnecting. The helper waits. A newer in-progress turn also blocks recovery. |
 | Desktop recent input | Stop typing or moving input for thirty seconds before the effect. |
 | Draft or unfamiliar layout | Preserve the draft. Resolve it manually. Unsupported placeholders, clipped input and attachments defer. |
-| Goal needs resume false | The latest turn may be unknown, interrupted, protected or still running. A generic blocked goal is insufficient. |
+| Goal needs resume false | The latest turn may be unknown, interrupted, protected or still running. Blocked alone is insufficient; the latest turn must be a safely classified terminal failure. |
 | Protected goal | A pause, limit, completion or unknown goal status was observed. Protection does not clear automatically for that same goal. |
+| Automatic retry limit | Inspect the repeated failure. Explicit OFF/ON rearms the counter but does not remove protection or incident deduplication. |
 | Recovery pending | Check connectivity and readiness. Pending intent survives unknown connectivity and observation gaps. |
 | Command left unsubmitted or adapter failed | Inspect the bound terminal. Partial or uncertain input is not retried automatically. |
 
 The program does not repair crashed terminals, expired authentication, quota,
-safety refusals or unknown failures. It does not restart Codex.
+safety refusals or ambiguous needed-user decisions. It does not restart Codex.
 
 ## Diagnostics and privacy
 

@@ -708,7 +708,8 @@ class StallRecoveryTests(unittest.TestCase):
         self.assertEqual(len(actuator.calls), 2)
         for now in (168,170,172):
             self.sample(controller, now, readiness=third)
-        self.assertEqual(len(actuator.calls), 3)
+        self.assertEqual(len(actuator.calls), 2)
+        self.assertIn('automatic retry limit', controller.label)
 
     def test_active_idle_needs_30_seconds_and_busy_resets_debounce(self):
         controller, actuator = self.controller()
@@ -880,9 +881,9 @@ class IncidentBindingRegressionTests(unittest.TestCase):
 
 class LiveMissRegressionTests(unittest.TestCase):
     def pipeline(self, before, message='request timed out', info='other',
-                 turn_status='failed', goal_status='blocked', details=None, misalignment=None,
+                 turn_status='failed', goal_status='active', details=None, misalignment=None,
                  newer=False, protected=False, identity=True, prompt='Ask Codex to do anything',
-                 token_budget=None, tokens_used=0):
+                 token_budget=None, tokens_used=0, online_after=None):
         import sqlite3
         text=before+'› '+prompt+'\n? for shortcuts\n'
         composer=mod.parse_composer(text,text.index('›')+2)
@@ -908,8 +909,8 @@ class LiveMissRegressionTests(unittest.TestCase):
                 observer.protected_goals.add('goal')
             cycle=mod.ReconnectCycle();cycle.enable(True)
             actuator=MockActuator();controller=mod.Controller(TARGET,cycle,actuator,ready_seconds=3)
-            with patch.object(observer,'identity_ok',return_value=identity),patch.object(mod,'visible_composer',return_value=composer),patch.object(mod,'desktop_idle_ms',return_value=40000),patch.object(mod,'internet_online',return_value=True),patch.object(mod.time,'monotonic') as clock:
-                for now in range(0,12,2):
+            with patch.object(observer,'identity_ok',return_value=identity),patch.object(mod,'visible_composer',return_value=composer),patch.object(mod,'desktop_idle_ms',return_value=40000),patch.object(mod,'internet_online',side_effect=lambda: online_after is None or clock.return_value >= online_after),patch.object(mod.time,'monotonic') as clock:
+                for now in range(0, 80 if online_after is not None else 12, 2):
                     clock.return_value=now
                     controller.accept(observer.observe(),now)
             return len(actuator.calls),composer.idle
@@ -958,6 +959,97 @@ class LiveMissRegressionTests(unittest.TestCase):
             with self.subTest(changes=changes):
                 self.assertEqual(self.pipeline(error,message=message,**changes)[0],0)
         self.assertEqual(self.pipeline(error+'Approve this command?\n',message=message)[0],0)
+
+    def test_warning_transport_boundary_preserves_stale_busy_recovery(self):
+        warning = '⚠ network error\n'
+        self.assertEqual(self.pipeline('Working (esc to interrupt)\n'+warning,
+                                       info='serverOverloaded'), (1, True))
+        self.assertEqual(self.pipeline(warning+'Working (esc to interrupt)\n',
+                                       info='serverOverloaded'), (0, False))
+
+    def test_blocked_goal_unfamiliar_technical_failure_uses_terminal_state(self):
+        message = 'Unexpected decoder crash while processing a response'
+        error = '■ ' + message + '\n'
+        self.assertEqual(self.pipeline(error, message=message, goal_status='blocked'), (1, True))
+        self.assertEqual(self.pipeline('Working (esc to interrupt)\n'+error,
+                                       message=message, goal_status='blocked'), (1, True))
+        for changes in ({'newer': True}, {'turn_status': 'inProgress'}, {'turn_status': 'interrupted'},
+                        {'turn_status': 'completed'}, {'protected': True}, {'identity': False},
+                        {'prompt': 'draft'}, {'details': {}}, {'misalignment': {}},
+                        {'info': 'cyberPolicy'}, {'info': 'unauthorized'},
+                        {'goal_status': 'paused'}, {'goal_status': 'complete'},
+                        {'goal_status': 'budget_limited'}, {'goal_status': 'usage_limited'},
+                        {'token_budget': 1, 'tokens_used': 1}):
+            opts = dict(message=message, goal_status='blocked'); opts.update(changes)
+            with self.subTest(changes=changes): self.assertEqual(self.pipeline(error, **opts)[0], 0)
+        self.assertEqual(self.pipeline(error+'Approve this command?\n',
+                                       message=message, goal_status='blocked')[0], 0)
+        for stop in ('Needs user decision', 'Please confirm permission', 'Authentication failed',
+                     'Quota exceeded', 'Rate limit', 'Policy refusal', 'Context window exhausted',
+                     'User interrupted', 'Stopped by user', 'User aborted the task',
+                     'Too many requests', '429', 'Context is full', 'Maximum context size exceeded',
+                     'Safety stop', 'HTTP 403'):
+            self.assertEqual(self.pipeline('■ '+stop+'\n', message=stop, goal_status='blocked')[0], 0)
+        self.assertEqual(self.pipeline(error+'Working (esc to interrupt)\n',
+                                       message=message, goal_status='blocked')[0], 0)
+
+    def test_blocked_unknown_failure_waits_for_offline_schedule(self):
+        message = 'Unexpected decoder crash while processing a response'
+        self.assertEqual(self.pipeline('■ '+message+'\n', message=message,
+                                       goal_status='blocked', online_after=60), (1, True))
+        self.assertEqual(self.pipeline('■ '+message+'\n', message=message,
+                                       goal_status='blocked', online_after=100), (0, True))
+
+    def test_completed_active_turn_rearms_but_same_completion_does_not_loop(self):
+        cycle = mod.ReconnectCycle(); cycle.enable(True)
+        actuator = MockActuator(); controller = mod.Controller(TARGET, cycle, actuator)
+        for index, now in enumerate((0, 70)):
+            item = replace(ready(), goal_id='goal', stall_kind='goal_stall', incident_id=('goal', str(index)))
+            controller.accept(mod.Observation(True, item, now), now)
+        done = replace(ready(), goal_id='goal', stall_kind='active_idle', incident_id=('goal', 'completed'))
+        for now in range(140, 172, 2): controller.accept(mod.Observation(True, done, now), now)
+        self.assertEqual(len(actuator.calls), 3)
+        for now in range(172, 180, 2): controller.accept(mod.Observation(True, done, now), now)
+        self.assertEqual(controller.consecutive_dispatches, 1)
+        self.assertEqual(len(actuator.calls), 3)
+
+    def test_consecutive_failed_turns_stop_after_two_attempts(self):
+        cycle = mod.ReconnectCycle(); cycle.enable(True)
+        actuator = MockActuator(); controller = mod.Controller(TARGET, cycle, actuator)
+        for index in range(4):
+            item = replace(ready(), goal_id='same-goal', stall_kind='goal_stall',
+                           incident_id=('same-goal', str(index)))
+            now = index * 70
+            controller.accept(mod.Observation(True, item, now), now)
+        self.assertEqual(len(actuator.calls), 2)
+        self.assertIn('automatic retry limit', controller.label)
+        cycle.enable(False); controller.accept(mod.Observation(True, item, 281), 281)
+        cycle.enable(True); controller.accept(mod.Observation(True, item, 282), 282)
+        self.assertEqual(len(actuator.calls), 3)
+
+    def test_remote_compact_network_decode_failure_exact_signature(self):
+        message = ('Error running remote compact task: stream disconnected before completion: '
+                   'Transport error: network error: error decoding response body')
+        error = '■ ' + message + '\n'
+        self.assertEqual(self.pipeline('Working (esc to interrupt)\n' + error,
+                                       message=message), (1, True))
+        self.assertEqual(self.pipeline(error + 'Working (esc to interrupt)\n',
+                                       message=message), (0, False))
+        for altered in (message + '\n', message + '; unauthorized',
+                        message + '; policy refusal', message + '; quota',
+                        message.lower(), 'network error: error decoding response body'):
+            with self.subTest(message=altered):
+                self.assertEqual(self.pipeline(error, message=altered)[0], 0)
+        for changes in ({'newer': True}, {'turn_status': 'inProgress'},
+                        {'turn_status': 'interrupted'}, {'goal_status': 'paused'},
+                        {'goal_status': 'complete'}, {'goal_status': 'budget_limited'},
+                        {'goal_status': 'usage_limited'}, {'token_budget': 10, 'tokens_used': 10},
+                        {'protected': True}, {'identity': False}, {'prompt': 'existing draft'},
+                        {'info': 'cyberPolicy'}, {'info': 'unauthorized'},
+                        {'details': {}}, {'misalignment': {}}):
+            with self.subTest(changes=changes):
+                self.assertEqual(self.pipeline(error, message=message, **changes)[0], 0)
+        self.assertEqual(self.pipeline(error + 'Approve this command?\n', message=message)[0], 0)
 
     def test_exact_request_timeout_admits_but_protected_or_unknown_remain_blocked(self):
         error='■ stream disconnected before completion: error sending request\n'

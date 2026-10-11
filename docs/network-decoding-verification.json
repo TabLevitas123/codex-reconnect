@@ -1,0 +1,41 @@
+{
+  "date": "2026-10-11",
+  "eligibility": "Exact complete message only, codexErrorInfo other, null additionalDetails and misalignment; existing readiness/protection gates retained",
+  "failure_signature": "Error running remote compact task: stream disconnected before completion: Transport error: network error: error decoding response body",
+  "independent_review": {
+    "sha256": "683f15b447698d5dc972b681543afe107a486fe901ae7b5ddd6f3384dc5057ba",
+    "status": "PASS_EXACT_NARROW_CHANGE",
+    "tests": 73
+  },
+  "limits": [
+    "Owned fixture does not qualify natural connectivity recovery or full GNOME/TTY observer inputs",
+    "Manual live resume proves command route, not automatic watcher initiation",
+    "Natural automatic live continuation remains unverified",
+    "Newer in-progress turns, drafts, approvals, explicit pauses, limits and unknown failures remain protected"
+  ],
+  "live_owner_observation": {
+    "evidence_basis": "Root-reported live observation; no private session binding exported",
+    "goal_active_confirmed": true,
+    "helper_ON": true,
+    "helper_restarted_with_corrected_source": true,
+    "manual_user_requested_resume_submitted_via_X11": true
+  },
+  "owned_x11": {
+    "Enter": 1,
+    "fixture_sha256": "761e1753b9b11c91289c6a76db2c7ba9deb5d215c887724e3859874eb5398a04",
+    "owned_window_closed": true,
+    "real_wall_seconds": 1.77919995598495,
+    "receipt_sha256": "cf156d60d65cffce9c90aafb53c77bb9cdca4b63155ed446bece55abb30a8614",
+    "scope": "Scripted connectivity and synthetic private turn metadata reached real keyboard input only in an owned fixture window",
+    "sends": 1,
+    "status": "PASS",
+    "worker_joined": true
+  },
+  "regression": {
+    "after": "PASS: one mocked dispatch; all 73 focused tests pass",
+    "before": "FAIL: idle composer with eligible failed turn produced zero mocked dispatches"
+  },
+  "schema": "CODEX_RECONNECT_NETWORK_DECODING_VERIFICATION_V1",
+  "source_sha256": "7a4490dbaf99a0237c3c987f8dd9ce708692f357e34e4dddc255b502679a8755",
+  "status": "INDEPENDENT_REVIEW_AND_OWNED_X11_PASS"
+}

@@ -1,0 +1,42 @@
+{
+  "date": "2026-10-11",
+  "limits": [
+    "Blocked alone is insufficient; goal schema has no stop reason",
+    "Ambiguous stops, required user decisions and explicit protected categories remain blocked",
+    "Circuit state is in-process, not persistent across daemon restart",
+    "Scripted fixture does not prove natural outage or automatic live Codex continuation",
+    "Completed metadata is not a claim of useful work or intelligence"
+  ],
+  "owned_x11": {
+    "Enter": 1,
+    "both_owned_windows_closed": true,
+    "fixture_sha256": "0b64dab695892eedebcf23c323a550e5c332c9666efb5cb0d1f59d20758f8f96",
+    "old_focus_restored": true,
+    "receipt_sha256": "5700227633b7bc2e4a341aaffcf69d5f11d714b8a3aaee1e575167506002a743",
+    "scenario": "Active goal baseline, scripted offline probes at virtual seconds2/32/62, then BLOCKED with unfamiliar ordinary-other failed turn; dispatch66",
+    "seconds": 1.9394650920294225,
+    "sends": 1,
+    "started_unfocused": true,
+    "status": "PASS"
+  },
+  "policy": {
+    "automatic_dispatch_ceiling": 2,
+    "goal_stall": "BLOCKED and latest overall FAILED ordinary-other error; nonempty message, no additional details or misalignment, no protected stop wording",
+    "guards": "Existing target/draft/modal/queue/desktop/newer-running/pause/limit guards preserved",
+    "rearm": "Explicit OFF\u2192ON or one newly observed safe completed ACTIVE turn; does not clear consumed incidents, cooldown or protected goals",
+    "zero_input": "Confirmed zero-input deferral refunds only its charged incident once"
+  },
+  "review": {
+    "scope": "Source/test/fixture review preceded separate root X11 execution",
+    "sha256": "ce3870197425e2098c96b9a6bbca5d98ce7a8d78e31bc5c6c8a7de4ef1e7139d",
+    "status": "PASS_EXACT_SOURCE_TEST_FIXTURE_DELTA_GUI_PENDING"
+  },
+  "schema": "CODEX_RECONNECT_STALL_RECOVERY_VERIFICATION_V1",
+  "source_sha256": "1953e755dedc37046b608772758542db29e9536e7e0f414262b9ec275347519a",
+  "status": "INDEPENDENT_SOURCE_REVIEW_AND_OWNED_X11_PASS",
+  "tests": {
+    "count": 78,
+    "regressions": "Blocked unfamiliar technical failure red\u2192green; warning transport cutoff red\u2192green; offline schedule and retry circuit protected",
+    "status": "PASS"
+  }
+}

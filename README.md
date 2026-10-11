@@ -9,17 +9,11 @@ no API credentials. Its connectivity checks use unauthenticated HTTPS.
 
 Project: [TabLevitas123/codex-reconnect](https://github.com/TabLevitas123/codex-reconnect).
 
-The current implementation passes 72 focused tests. Independent review covers
-the recovery fix for stale busy indicators and the exact `request timed out`
-failure. The helper activates the terminal even when it already has focus.
-The exact bare transport timeout also passes a synthetic observer/controller
-regression. This change still needs independent review and live verification.
-`Waiting: Codex is working` refers to ongoing work, not a selected input field.
-An actual X11 fixture verified command typing and Enter. A further [watcher-to-X11 fixture](docs/testing.md#joined-watcher-to-x11-fixture)
-passed one run using scripted connectivity and a virtual clock. The production
-watcher decision reached the real keyboard adapter and sent one command and
-Enter to an owned window. Independent runtime review passed in this bounded fixture scope. Recovery
-through a natural outage into a live Codex continuation remains unverified.
+The current implementation passes 78 focused tests. An owned blocked goal can qualify when its latest turn failed with an unfamiliar ordinary technical error. Recovery no longer depends only on exact transport messages. Explicit pauses, limits, approvals, security or refusal states, authentication, quota, context limits, user interruption and ambiguous needed-user decisions remain protected.
+
+Two consecutive automatic attempts stop further retries until a new safe completed active turn or explicit OFF/ON rearm. Existing incident deduplication and cooldown still apply. Read [design and limits](docs/design.md) for the exact boundary.
+
+Independent source review passed. One owned X11 fixture started with the target behind an unfocused companion window. The production adapter activated the target, delivered exactly one `/goal resume` and Enter, restored the companion's focus and closed both owned windows. The run took 1.9395 seconds with scripted connectivity and synthetic metadata. See [verification](docs/stall-recovery-verification.json). Natural automatic live continuation remains unverified. Prior [network-error verification](docs/network-decoding-verification.json) remains historical evidence.
 
 ## Supported setup
 
@@ -54,9 +48,9 @@ thread, foreground TUI process, backend process and TTY. Follow
 [usage](docs/usage.md) before passing `--qualify-target`.
 
 The helper checks offline connectivity every thirty seconds and keeps pending
-same-goal recovery until safe or cancelled. It also handles allowlisted typed
-transient failures and qualified active-idle incidents. It protects observed
-pauses, limits, completion, drafts and approval states. Unknown errors stay
+same-goal recovery until safe or cancelled. It also handles qualified blocked technical failures, allowlisted typed
+transients and active-idle incidents. It protects observed
+pauses, limits, completion, drafts and approval states. Ambiguous stops stay
 blocked. See [design and limits](docs/design.md).
 
 A "Sent /goal resume" label confirms keyboard delivery only. It does not prove

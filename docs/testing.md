@@ -2,7 +2,7 @@
 
 ## Busy-indicator recovery fix
 
-The current suite has 72 passing tests. New observer/controller regressions
+The current suite has 78 passing tests. New observer/controller regressions
 first reproduced two missed-recovery mechanisms: an old interrupt hint before
 a terminal error, and a failed turn whose exact message was `request timed out`.
 A separate failing case covered the timeout's terminal display. The fixes
@@ -136,3 +136,21 @@ misalignment, newer in-progress turns, protected goals, paused or exhausted
 goals, drafts, approvals and changed target identity still blocked input.
 This verifies the local decision path. Independent review and automatic live
 continuation for this incident remain unverified.
+
+## Remote-compaction network decoding regression
+
+On 2026-10-11, the exact failed-turn message was `Error running remote compact task: stream disconnected before completion: Transport error: network error: error decoding response body`, with type `other`, null additional details and null misalignment. The joined composer/SQLite observer/controller regression first returned no dispatch despite idle input. Adding only that complete message produced one mocked dispatch. All 73 focused tests passed.
+
+The regression preserves blocking for newer in-progress turns, current activity, drafts, approvals, protected or paused goals, exhausted limits, changed target identity, altered messages and extra error details. A current in-progress turn still blocks recovery even when a previous turn has the newly recognized error.
+
+The watcher-to-X11 fixture now pins the corrected source and uses this exact failure in its private synthetic history. Its current revision passed one root-owned X11 run with one command and Enter in 1.7792 seconds. The worker joined and the owned window closed. Independent source review passed all 73 focused tests. Earlier fixture results above remain historical evidence for their recorded source revisions. No natural outage or automatic live continuation is established by this update.
+
+Root also restarted the corrected live helper, enabled monitoring and manually submitted the user-requested `/goal resume` through X11. The goal became active. This was a manual submission, not a natural automatic recovery. See [the compact verification record](network-decoding-verification.json).
+
+## Blocked unfamiliar failure and unfocused target
+
+The current 78-test suite adds blocked unfamiliar-error recovery, offline waiting, protected-stop falsifiers and the two-attempt circuit breaker. The blocked generic failure and warning-boundary cases each failed against their preserved prior candidate and passed after correction. Newer in-progress turns, current activity, drafts, approvals, identity changes, pauses and limits remain negative cases.
+
+Independent source/test/fixture review passed. Root then ran the owned watcher-to-X11 fixture with `--start-unfocused`. An active baseline preceded scripted connectivity loss; failed synthetic metadata then reported BLOCKED with an unfamiliar ordinary technical error. Exactly one dispatch typed `/goal resume` and Enter into the target after production activation. The previous companion focus was restored and both owned windows closed. Real wall time was 1.9395 seconds. No keys went to a live Codex terminal in this fixture.
+
+This proves the bounded unfocused keyboard route with scripted connectivity. It does not establish a natural outage, full live GNOME/TTY observation or automatic live continuation. Earlier results remain tied to their historical source revisions. See [the current compact verification](stall-recovery-verification.json).

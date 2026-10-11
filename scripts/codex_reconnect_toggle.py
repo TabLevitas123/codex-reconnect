@@ -159,8 +159,11 @@ class ReconnectCycle:
         self.since: float | None = None
         self.last_attempt: float | None = None
         self.last_sample: float | None = None
+        self.enable_epoch = 0
 
     def enable(self, enabled: bool) -> None:
+        if enabled and not self.enabled:
+            self.enable_epoch += 1
         self.enabled = enabled
         self.phase = "watching" if enabled else "off"
         self.since = None
@@ -214,6 +217,11 @@ class Controller:
         self.goal_epoch: int | None = None
         self.consumed_incidents: set[tuple] = set()
         self.last_dispatch: float | None = None
+        self.consecutive_dispatches = 0
+        self.charged_incidents: set[tuple] = set()
+        self.last_completed_incident: tuple | None = None
+        self.rearm_epoch = cycle.enable_epoch
+        self.retry_goal_id: str | None = None
 
     def accept(self, observation: Observation, now: float) -> None:
         old_pending, old_actions = self.pending_since, self.action_count
@@ -244,6 +252,11 @@ class Controller:
             self.goal_epoch = observation.goal_epoch
             self.pending_since = self.ready_since = None
             self.cycle.enable(self.cycle.enabled)
+        if self.cycle.enable_epoch != self.rearm_epoch:
+            # Explicit OFF/ON rearms attempts, not protected goals or incidents.
+            self.consecutive_dispatches = 0
+            self.charged_incidents.clear()
+        self.rearm_epoch = self.cycle.enable_epoch
         previous_sample = self.cycle.last_sample
         if not math.isfinite(now) or (previous_sample is not None and now < previous_sample):
             self.ready_since = None
@@ -265,7 +278,7 @@ class Controller:
         if not self.cycle.enabled:
             self.label = "OFF"
             return
-        named_stall = observation.readiness.stall_kind in ("transport", "active_idle")
+        named_stall = observation.readiness.stall_kind in ("transport", "active_idle", "goal_stall")
         incident = observation.readiness.incident_id
         if named_stall and incident is not None and incident not in self.consumed_incidents and self.pending_since is None:
             self.pending_since, self.ready_since = now, None
@@ -294,6 +307,20 @@ class Controller:
             self.ready_since = None
             self.label = "Recovery pending. " + blocker
             return
+        if observation.readiness.goal_id != self.retry_goal_id:
+            self.retry_goal_id = observation.readiness.goal_id
+            self.consecutive_dispatches = 0
+            self.charged_incidents.clear()
+            self.last_completed_incident = None
+        if (observation.readiness.stall_kind == "active_idle"
+                and incident != self.last_completed_incident):
+            self.last_completed_incident = incident
+            self.consecutive_dispatches = 0
+            self.charged_incidents.clear()
+        if self.consecutive_dispatches >= 2:
+            self.ready_since = None
+            self.label = "Blocked: automatic retry limit; inspect failure or rearm OFF/ON"
+            return
         if self.ready_since is None:
             self.ready_since = now
         if now - self.ready_since < (max(30, self.ready_seconds) if observation.readiness.stall_kind == "active_idle" else self.ready_seconds):
@@ -305,8 +332,10 @@ class Controller:
         self.pending_since = self.ready_since = None
         self.last_dispatch = now
         self.action_count += 1
+        self.consecutive_dispatches += 1
         if incident is not None:
             self.consumed_incidents.add(incident)
+            self.charged_incidents.add(incident)
         try:
             self.label = self.actuator.resume(self.target, observation.readiness)
         except Exception:
@@ -320,6 +349,9 @@ class Controller:
                       "Deferred: readiness changed after activation", "Deferred: target did not activate"}
         if self.cycle.enabled and result in zero_input:
             self.consumed_incidents.discard(readiness.incident_id)
+            if readiness.incident_id in self.charged_incidents:
+                self.charged_incidents.remove(readiness.incident_id)
+                self.consecutive_dispatches = max(0, self.consecutive_dispatches - 1)
             self.pending_since, self.ready_since = now, None
 
 
@@ -421,7 +453,7 @@ def read_goal(thread_id: str, codex_dir: Path) -> Goal:
 
 
 
-def resumable_turn(codex_dir: Path, thread_id: str) -> tuple[str | None, str | None]:
+def resumable_turn(codex_dir: Path, thread_id: str, goal_status: str | None = None) -> tuple[str | None, str | None]:
     with sqlite3.connect((codex_dir / "thread_history_1.sqlite").as_uri() + "?mode=ro",
                          uri=True, timeout=1) as db:
         row = db.execute("SELECT turn_id,status,error_json FROM thread_turns WHERE thread_id=? "
@@ -437,6 +469,23 @@ def resumable_turn(codex_dir: Path, thread_id: str) -> tuple[str | None, str | N
     if not isinstance(error, dict) or error.get("misalignment") is not None:
         return None, turn_id
     info = error.get("codexErrorInfo")
+    # BLOCKED alone has no stop reason in the goal schema. Require an actual
+    # failed turn and an ordinary error, never an unclassified decision stop.
+    message = error.get("message")
+    protected_message = isinstance(message, str) and re.search(
+                r"paus|goal.completed|task.completed|budget|usage.limit|approv|permission|confirm|clarif|"
+                r"need.*(?:input|decision)|requir.*(?:input|decision)|wait.*user|"
+                r"auth|unauthor|forbidden|sign.in|credential|quota|rate.limit|billing|"
+                r"secur|policy|safety|refus|misalignment|context.limit|context.window|"
+                r"context.length|context.*full|maximum.context|token.limit|interrupt|cancel|"
+                r"stopped.by.user|user.abort|stop.request|too.many.requests|\b429\b|HTTP\s*4\d\d",
+                message, re.IGNORECASE)
+    if protected_message:
+        return None, turn_id
+    if (goal_status == "blocked" and info == "other"
+            and error.get("additionalDetails") is None
+            and isinstance(message, str) and message.strip()):
+        return "goal_stall", turn_id
     if info == "other" and error.get("additionalDetails") is None:
         # This CLI reports these verified timeout diagnostics as `other`.
         # Match complete messages in memory; never generalize `other`.
@@ -444,9 +493,10 @@ def resumable_turn(codex_dir: Path, thread_id: str) -> tuple[str | None, str | N
         if message in ("request timed out",
                        "stream disconnected before completion: Transport error: timeout"):
             return "transport", turn_id
-        if isinstance(message, str) and re.fullmatch(
-            r"Error running remote compact task: stream disconnected before completion: Transport error: timeout",
-            message,
+        if message in (
+            "Error running remote compact task: stream disconnected before completion: Transport error: timeout",
+            "Error running remote compact task: stream disconnected before completion: "
+            "Transport error: network error: error decoding response body",
         ):
             return "transport", turn_id
     if info in ("serverOverloaded", "flexUnavailable", "internalServerError"):
@@ -538,7 +588,11 @@ def parse_composer(text: str, caret: int, expected_input: str = "") -> Composer:
         r"(?:^|\n)[ \t]*■[ \t]*request timed out[ \t]*(?=\n|$)", recent))
     # Activity before the latest terminal transport error belongs to history.
     # Activity after that error still blocks, including an interrupt hint.
-    current_status = recent[transport_errors[-1].end():] if transport_errors else recent
+    terminal_errors = list(re.finditer(r"(?:^|\n)[ \t]*(?:■|error:)[ \t]*[^\n]+", recent))
+    # Terminal failure rendering ends older activity. This does not grant
+    # eligibility: latest-turn metadata and protected-stop guards still decide.
+    boundaries = transport_errors + terminal_errors
+    current_status = recent[max(error.end() for error in boundaries):] if boundaries else recent
     busy = "esc to interrupt" in current_status or bool(re.search(
         r"(?:^|\n)\s*[•●]?\s*(?:working|thinking|connecting|reconnecting|running)(?:\s|\.)",
         current_status))
@@ -750,7 +804,7 @@ class LiveObserver:
             composer = visible_composer(self.target.window_id, expected_input, self.binding)
             desktop_idle = desktop_idle_ms() >= 30000 if require_idle else True
             budget = goal.token_budget is None or goal.tokens_used < goal.token_budget
-            stall_kind, turn_id = resumable_turn(self.codex_dir, self.target.thread_id)
+            stall_kind, turn_id = resumable_turn(self.codex_dir, self.target.thread_id, goal.status)
             if stall_kind == "active_idle" and goal.status != "active":
                 stall_kind = None
             if stall_kind and self.baseline_goal == goal.goal_id and not self.pause_seen:
