@@ -364,6 +364,8 @@ class X11AdapterTests(unittest.TestCase):
         observer.outage_goal, observer.pause_seen = "goal-id", False
         observer.baseline_goal = None
         observer.current_goal_id, observer.protected_goals, observer.goal_epoch = "goal-id", set(), 0
+        observer.initial_goal_id = "goal-id"
+        observer.startup_adoption_allowed = True
         for status in ["paused", "budget_limited", "usage_limited", "complete"]:
             observer.pause_seen = False
             observer.protected_goals.clear()
@@ -390,6 +392,8 @@ class X11AdapterTests(unittest.TestCase):
         observer.outage_goal, observer.pause_seen = "goal-id", False
         observer.baseline_goal = None
         observer.current_goal_id, observer.protected_goals, observer.goal_epoch = "goal-id", set(), 0
+        observer.initial_goal_id = "goal-id"
+        observer.startup_adoption_allowed = True
         goal = mod.Goal("goal-id", "blocked", None, 0, 0, False)
         with patch.object(observer, "identity_ok", return_value=True), \
                 patch.object(mod, "read_goal", return_value=goal), \
@@ -597,6 +601,22 @@ class GoalLatchTests(unittest.TestCase):
         observer.track_goal(self.goal("new"), True)
         self.assertEqual(observer.goal_epoch, epoch)
 
+    def test_startup_transport_adoption_cannot_follow_a_goal_change(self):
+        observer = self.observer()
+        observer.target, observer.codex_dir = TARGET, Path('/fixture')
+        observer.track_goal(self.goal('first'), True)
+        with patch.object(mod, 'resumable_turn', return_value=('transport', 'turn')):
+            observer.track_goal(self.goal('second', 'blocked'), True)
+        self.assertIsNone(observer.baseline_goal)
+        self.assertIsNone(observer.outage_goal)
+        with patch.object(mod, 'resumable_turn', return_value=('transport', 'turn')):
+            observer.track_goal(self.goal('first', 'blocked'), True)
+            self.assertIsNone(observer.baseline_goal)
+            self.assertIsNone(observer.outage_goal)
+            observer.reset_cycle()
+            observer.track_goal(self.goal('first', 'blocked'), True)
+            self.assertEqual(observer.baseline_goal, 'first')
+
     def test_same_goal_protection_survives_active_and_cycle_reset(self):
         for status in ["paused", "budget_limited", "usage_limited", "complete"]:
             observer = self.observer()
@@ -709,7 +729,10 @@ class StallRecoveryTests(unittest.TestCase):
         for now in (168,170,172):
             self.sample(controller, now, readiness=third)
         self.assertEqual(len(actuator.calls), 2)
-        self.assertIn('automatic retry limit', controller.label)
+        self.assertIn('transient retry backoff', controller.label)
+        for now in (224, 226, 228):
+            self.sample(controller, now, readiness=third)
+        self.assertEqual(len(actuator.calls), 3)
 
     def test_active_idle_needs_30_seconds_and_busy_resets_debounce(self):
         controller, actuator = self.controller()
@@ -883,7 +906,7 @@ class LiveMissRegressionTests(unittest.TestCase):
     def pipeline(self, before, message='request timed out', info='other',
                  turn_status='failed', goal_status='active', details=None, misalignment=None,
                  newer=False, protected=False, identity=True, prompt='Ask Codex to do anything',
-                 token_budget=None, tokens_used=0, online_after=None):
+                 token_budget=None, tokens_used=0, online_after=None, turn_schedule=None, trace=None, cold_start=False, online_state=True):
         import sqlite3
         text=before+'› '+prompt+'\n? for shortcuts\n'
         composer=mod.parse_composer(text,text.index('›')+2)
@@ -904,16 +927,56 @@ class LiveMissRegressionTests(unittest.TestCase):
             observer=object.__new__(mod.LiveObserver)
             observer.target,observer.codex_dir,observer.binding=TARGET,root,'fixture-binding'
             observer.reset_cycle()
-            observer.current_goal_id,observer.baseline_goal='goal','goal'
+            if not cold_start:
+                observer.current_goal_id,observer.baseline_goal='goal','goal'
             if protected:
                 observer.protected_goals.add('goal')
             cycle=mod.ReconnectCycle();cycle.enable(True)
-            actuator=MockActuator();controller=mod.Controller(TARGET,cycle,actuator,ready_seconds=3)
-            with patch.object(observer,'identity_ok',return_value=identity),patch.object(mod,'visible_composer',return_value=composer),patch.object(mod,'desktop_idle_ms',return_value=40000),patch.object(mod,'internet_online',side_effect=lambda: online_after is None or clock.return_value >= online_after),patch.object(mod.time,'monotonic') as clock:
-                for now in range(0, 80 if online_after is not None else 12, 2):
+            actuator=MockActuator();controller=mod.Controller(TARGET,cycle,actuator,ready_seconds=3,trace=trace)
+            with patch.object(observer,'identity_ok',return_value=identity),patch.object(mod,'visible_composer',return_value=composer),patch.object(mod,'desktop_idle_ms',return_value=40000),patch.object(mod,'internet_online',side_effect=lambda: online_state if online_after is None or clock.return_value >= online_after else False),patch.object(mod.time,'monotonic') as clock:
+                for now in range(0, 212 if turn_schedule else (80 if online_after is not None else 12), 2):
+                    if turn_schedule and now in turn_schedule:
+                        with sqlite3.connect(root/'thread_history_1.sqlite') as db:
+                            db.execute('INSERT INTO thread_turns VALUES(?,?,?,?,?)',
+                                       (TARGET.thread_id, turn_schedule[now], 'failed', json.dumps(error), now + 2))
                     clock.return_value=now
                     controller.accept(observer.observe(),now)
             return len(actuator.calls),composer.idle
+
+    def test_cold_start_adopts_online_blocked_known_transport_only(self):
+        message = ('Error running remote compact task: stream disconnected before completion: '
+                   'Transport error: timeout')
+        before = '■ ' + message + '\n'
+        opts = dict(message=message, goal_status='blocked', cold_start=True)
+        self.assertEqual(self.pipeline(before, **opts)[0], 1)
+        for changes in ({'online_after': 100}, {'online_state': None}, {'newer': True},
+                        {'turn_status': 'inProgress'}, {'turn_status': 'completed'},
+                        {'protected': True}, {'goal_status': 'paused'},
+                        {'token_budget': 1, 'tokens_used': 1},
+                        {'message': 'Unexpected decoder crash'},
+                        {'details': {}}, {'misalignment': {}},
+                        {'info': 'unauthorized'}):
+            with self.subTest(changes=changes):
+                options = dict(opts); options.update(changes)
+                self.assertEqual(self.pipeline(before, **options)[0], 0)
+
+    def test_repeated_blocked_remote_compact_timeouts_resume_new_failed_turns(self):
+        message = ('Error running remote compact task: stream disconnected before completion: '
+                   'Transport error: timeout')
+        calls, idle = self.pipeline('■ ' + message + '\n', message=message,
+                                   goal_status='blocked',
+                                   turn_schedule={0: 'first', 70: 'second', 200: 'third'})
+        self.assertTrue(idle)
+        self.assertEqual(calls, 3)
+
+    def test_repeated_unknown_failures_keep_limit_and_report_it(self):
+        events = []
+        message = 'Unexpected decoder crash while processing a response'
+        calls, _ = self.pipeline('■ ' + message + '\n', message=message,
+                                goal_status='blocked', trace=events.append,
+                                turn_schedule={0: 'first', 70: 'second', 200: 'third'})
+        self.assertEqual(calls, 2)
+        self.assertEqual(events[-1]['reason'], 'automatic_retry_limit')
 
     def test_stale_interrupt_before_terminal_error_clears_through_real_pipeline(self):
         error='■ stream disconnected before completion: error sending request\n'
@@ -1012,6 +1075,38 @@ class LiveMissRegressionTests(unittest.TestCase):
         for now in range(172, 180, 2): controller.accept(mod.Observation(True, done, now), now)
         self.assertEqual(controller.consecutive_dispatches, 1)
         self.assertEqual(len(actuator.calls), 3)
+
+    def test_transport_retries_back_off_with_cap_and_deduplicate_incidents(self):
+        cycle = mod.ReconnectCycle(); cycle.enable(True)
+        events = []
+        actuator = MockActuator()
+        controller = mod.Controller(TARGET, cycle, actuator, trace=events.append)
+        for index, now in enumerate((0, 60, 180, 420, 720, 1020)):
+            item = replace(ready(), goal_id='goal', stall_kind='transport',
+                           incident_id=('goal', str(index)))
+            if index:
+                controller.accept(mod.Observation(True, item, now - 1), now - 1)
+                self.assertEqual(len(actuator.calls), index)
+                self.assertEqual(events[-1]['reason'], 'transient_retry_backoff')
+            controller.accept(mod.Observation(True, item, now), now)
+            self.assertEqual(len(actuator.calls), index + 1)
+            controller.accept(mod.Observation(True, item, now + 1), now + 1)
+            self.assertEqual(len(actuator.calls), index + 1)
+
+    def test_transport_retry_after_two_attempts_still_requires_all_guards(self):
+        for guard in ('route_verified', 'draft_empty', 'idle', 'no_modal',
+                      'no_explicit_pause', 'budget_available', 'recovery_owned',
+                      'same_goal', 'goal_needs_resume', 'queue_empty'):
+            with self.subTest(guard=guard):
+                cycle = mod.ReconnectCycle(); cycle.enable(True)
+                actuator = MockActuator(); controller = mod.Controller(TARGET, cycle, actuator)
+                for index, now in enumerate((0, 60, 180)):
+                    item = replace(ready(), goal_id='goal', stall_kind='transport',
+                                   incident_id=('goal', str(index)))
+                    if index == 2:
+                        item = replace(item, **{guard: False})
+                    controller.accept(mod.Observation(True, item, now), now)
+                self.assertEqual(len(actuator.calls), 2)
 
     def test_consecutive_failed_turns_stop_after_two_attempts(self):
         cycle = mod.ReconnectCycle(); cycle.enable(True)

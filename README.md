@@ -9,9 +9,9 @@ no API credentials. Its connectivity checks use unauthenticated HTTPS.
 
 Project: [TabLevitas123/codex-reconnect](https://github.com/TabLevitas123/codex-reconnect).
 
-The current implementation passes 78 focused tests. An owned blocked goal can qualify when its latest turn failed with an unfamiliar ordinary technical error. Recovery no longer depends only on exact transport messages. Explicit pauses, limits, approvals, security or refusal states, authentication, quota, context limits, user interruption and ambiguous needed-user decisions remain protected.
+The current implementation passes 84 focused tests. An owned blocked goal can qualify when its latest turn failed with an unfamiliar ordinary technical error. Recovery no longer depends only on exact transport messages. Explicit pauses, limits, approvals, security or refusal states, authentication, quota, context limits, user interruption and ambiguous needed-user decisions remain protected.
 
-Two consecutive automatic attempts stop further retries until a new safe completed active turn or explicit OFF/ON rearm. Existing incident deduplication and cooldown still apply. Read [design and limits](docs/design.md) for the exact boundary.
+Allowlisted transport failures can retry on new failed turns with a delay that grows from sixty seconds to five minutes. Unfamiliar ordinary failures stop after two consecutive automatic attempts until a new safe completed active turn or explicit OFF/ON rearm. Incident deduplication and all readiness guards still apply. Read [design and limits](docs/design.md) for the exact boundary.
 
 Independent source review passed. One owned X11 fixture started with the target behind an unfocused companion window. The production adapter activated the target, delivered exactly one `/goal resume` and Enter, restored the companion's focus and closed both owned windows. The run took 1.9395 seconds with scripted connectivity and synthetic metadata. See [verification](docs/stall-recovery-verification.json). Natural automatic live continuation remains unverified. Prior [network-error verification](docs/network-decoding-verification.json) remains historical evidence.
 

@@ -1,8 +1,20 @@
 # Testing
 
+## Repeated timeout and startup recovery
+
+The current focused suite has 84 tests. It reproduces three distinct transport
+failures through the production observer and controller, verifies continued
+retries with capped backoff, and keeps ordinary failures limited to two attempts.
+Startup cases cover an already blocked goal, offline and unknown connectivity,
+protected states, and a goal switch followed by return to the original goal.
+A goal switch closes startup adoption until a fresh monitoring cycle.
+
+These checks use controlled time, private fixture databases and mocked keyboard
+effects. They do not prove natural recovery after an actual network outage.
+
 ## Busy-indicator recovery fix
 
-The current suite has 78 passing tests. New observer/controller regressions
+The earlier busy-indicator suite had 78 passing tests. New observer/controller regressions
 first reproduced two missed-recovery mechanisms: an old interrupt hint before
 a terminal error, and a failed turn whose exact message was `request timed out`.
 A separate failing case covered the timeout's terminal display. The fixes

@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-10-12: repeated timeout recovery
+
+- Keep retrying new recognized transport failures with capped backoff instead
+  of stopping after two attempts. Preserve the ordinary-failure limit.
+- Report retry limits and backoff accurately in transition diagnostics.
+- Allow an online fresh monitoring cycle to adopt its first already blocked
+  goal only when the latest turn has a recognized transport failure.
+- Close that startup allowance after a goal change. Preserve drafts, pauses,
+  approval boundaries, budgets and incident deduplication.
+
 ## 2026-10-07: stalled-turn recovery
 
 - Ignore historical busy hints preceding a terminal transport error while

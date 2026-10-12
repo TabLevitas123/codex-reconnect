@@ -1,0 +1,44 @@
+{
+  "schema": "REPEATED_TRANSPORT_TIMEOUT_VERIFICATION_V1",
+  "date": "2026-10-12",
+  "status": "PASS_SCOPED_REGRESSIONS_AND_OWNED_X11",
+  "source_sha256": "deda180fb8b3151b5a25fe28f94e1cb4bbc09a0b63cf7ff17a4fb98901501dea",
+  "tests_sha256": "d321d882a759ee18e0f4473d966c9bf34136289499cccae2efd6aaa37f56608b",
+  "tests": {
+    "command": "python3 -m unittest discover -s tests -p test_codex_reconnect_toggle.py",
+    "passed": 84,
+    "failed": 0,
+    "independent_review": "PASS_AFTER_STARTUP_RETURN_CORRECTION"
+  },
+  "regressions": [
+    "Three distinct blocked remote-compaction timeout turns produced only two dispatches before correction",
+    "A fresh helper could not adopt an already blocked recognized transport failure",
+    "Returning to the initial goal after a goal switch could reopen startup adoption until corrected"
+  ],
+  "x11": {
+    "source_sha256": "deda180fb8b3151b5a25fe28f94e1cb4bbc09a0b63cf7ff17a4fb98901501dea",
+    "started_unfocused": true,
+    "exact_commands_received": [
+      "/goal resume"
+    ],
+    "enter_events": 1,
+    "seconds": 2.061395011958666,
+    "focus_restored": true,
+    "owned_windows_closed": true,
+    "worker_joined": true
+  },
+  "retained_failed_attempts": [
+    {
+      "scope": "Earlier root-owned fixture cleanup adapter",
+      "cause": "Decimal window identity supplied to hexadecimal close guard",
+      "resolution": "Normalized owned window identity; final run passed",
+      "production_bug": false
+    }
+  ],
+  "limits": [
+    "Synthetic connectivity, goal metadata, and time. Actual X11 keyboard effects in owned windows.",
+    "Historical cause is consistent with the reproduction; rotated logs cannot prove prior automatic attempt count.",
+    "Natural automatic continuation after an actual outage remains unverified.",
+    "Live current user draft and running turn remain protected."
+  ]
+}

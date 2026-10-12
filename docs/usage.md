@@ -47,18 +47,31 @@ Click OFF to turn monitoring ON. Click ON to cancel monitoring and pending
 effects. Closing the control disables it. Every launch starts OFF. The window
 stays above other windows while its process runs.
 
-Allow the helper to observe the active goal while online. Offline HTTPS
+Allow the helper to observe the active goal while online. A freshly enabled
+helper can also adopt its first observed blocked goal while online when the
+latest turn is an allowlisted transport failure. Unfamiliar blocked failures
+need a previously observed active baseline. Newer running turns and protected
+goals remain ineligible. Offline HTTPS
 checks run every thirty seconds. Readiness checks continue roughly every two
 seconds, with bounded worker delays. Recovery waits through drafts, busy CLI
 output and recent desktop input; it has no two-minute expiry.
 
 A typed transient or qualified blocked technical failure needs three seconds of consistent readiness. An
 active goal whose latest turn completed needs thirty seconds of safe idle
-observations. Sends have a sixty-second cooldown. Each goal/turn incident gets
-one attempt, except an explicitly confirmed zero-input deferral. OFF, a goal
+observations. Sends have at least a sixty-second cooldown. Recognized transport
+failures on new failed turns wait sixty, 120, 240 and then 300 seconds between
+consecutive attempts. Each goal/turn incident gets one attempt, except an
+explicitly confirmed zero-input deferral. OFF, a goal
 change or a protected goal state cancels pending recovery.
 
-Two consecutive automatic attempts stop further retries for the goal. A newly observed safe completed active turn or explicit OFF/ON rearms the counter. Rearm does not clear protected goals, already consumed incidents or the sixty-second cooldown. Confirmed zero-input deferrals do not spend an attempt. The counter is local to the running helper.
+Two consecutive automatic attempts stop further retries for unfamiliar ordinary
+failures and other eligible stalls. Recognized transport failures can continue
+on new failed turns after the capped backoff, with all readiness guards still
+required. Repeated observations of the same incident never cause another send.
+A newly observed safe completed active turn or explicit OFF/ON rearms the
+counter. Rearm does not clear protected goals, already consumed incidents or
+the sixty-second cooldown. Confirmed zero-input deferrals do not spend an
+attempt. The counter is local to the running helper.
 
 The target may be behind other windows or unfocused. The adapter activates the qualified target before typing and restores the previous focus only while both identities and focus remain safe. An owned two-window fixture verified that route; it does not prove arbitrary desktop conditions.
 
@@ -77,6 +90,7 @@ yourself before editing or submitting it; the helper never clears it.
 | Goal needs resume false | The latest turn may be unknown, interrupted, protected or still running. Blocked alone is insufficient; the latest turn must be a safely classified terminal failure. |
 | Protected goal | A pause, limit, completion or unknown goal status was observed. Protection does not clear automatically for that same goal. |
 | Automatic retry limit | Inspect the repeated failure. Explicit OFF/ON rearms the counter but does not remove protection or incident deduplication. |
+| Transient retry backoff | Wait for the capped delay. A new failed turn and safe readiness are required before another transport retry. |
 | Recovery pending | Check connectivity and readiness. Pending intent survives unknown connectivity and observation gaps. |
 | Command left unsubmitted or adapter failed | Inspect the bound terminal. Partial or uncertain input is not retried automatically. |
 

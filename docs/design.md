@@ -20,7 +20,13 @@ every two seconds. Network debounce requires six-second outage and recovery
 periods. Unknown samples or a long gap reset debounce. Already pending
 same-goal recovery survives them and waits for verified connectivity.
 
-An active goal observed online establishes the baseline. A different goal
+An active goal observed online establishes the baseline. At startup or after
+OFF/ON, the first observed goal can also establish it while online if it is
+blocked and its latest overall turn is a safely classified allowlisted
+transport failure. Unfamiliar blocked failures require an observed active
+baseline. Offline or unknown connectivity, newer in-progress turns, blocked
+completed turns and protected goals cannot establish this startup baseline.
+A different goal
 clears old ownership and pending intent. A change observed offline cannot
 inherit old recovery. Observed pauses, limits, completion and unknown goal
 statuses latch protection for that goal. Reobserving it as active or toggling
@@ -56,8 +62,10 @@ diagnostic details. Other errors outside the blocked-goal ordinary-failure lane 
 
 Queue entries, deferred continuation, visible modal/approval states and drafts
 still block typing. A typed failure alone is insufficient. Each goal/turn
-incident gets one attempt, with a sixty-second cooldown across sends and
-OFF/ON. A known zero-input deferral retains pending intent for another safe
+incident gets one attempt, with at least a sixty-second cooldown across sends and
+OFF/ON. Repeated allowlisted transport failures wait sixty, 120, 240 and then
+300 seconds between consecutive attempts. A new failed turn is required for
+each attempt; repeatedly observing the same failure cannot send again. A known zero-input deferral retains pending intent for another safe
 attempt after cooldown. Partial input and unknown effect outcomes stay consumed
 because automatic retyping could duplicate input.
 
@@ -98,10 +106,15 @@ crashed sessions and unattended login recovery are unsupported.
 Codex turn. Automated tests and a dummy keyboard fixture do not establish
 actual CLI continuation after a real outage.
 
-## Blocked-goal failures and retry ceiling
+## Blocked-goal failures and retries
 
 The goal schema has status and budget fields but no stop reason. BLOCKED alone is insufficient. The new lane requires the latest overall turn to be FAILED with type `other`, a nonempty message, null additional details and null misalignment. Unfamiliar technical wording may qualify. Required input or decisions, approval, pause, limit, security, refusal, authentication, quota, context exhaustion and user-interruption wording block before failure eligibility. Missing or ambiguous metadata, interrupted turns, blocked completed turns and newer in-progress turns remain blocked. This does not make every error recoverable.
 
 A terminal error boundary ends preceding historical activity, including the existing warning transport markers. Activity after the newest boundary still blocks. Rendering grants no eligibility by itself; goal and latest-turn metadata remain required.
 
-The controller permits at most two consecutive automatic dispatches per goal. A newly observed safe completed ACTIVE turn resets the counter once. Explicit OFF→ON also rearms it. Neither clears protected goals, consumed incidents or cooldown. Confirmed zero-input deferrals refund their charged incident once; uncertain or partial effects remain charged. Completed metadata does not prove useful work. The counter lives in the running helper and does not persist across a restart.
+Exact allowlisted transport signatures are classified before unfamiliar blocked-goal failures. These transport incidents can continue retrying on new failed turns with the capped backoff above. The controller permits at most two consecutive automatic dispatches per goal for other eligible stalls. A newly observed safe completed ACTIVE turn resets the counter once. Explicit OFF→ON also rearms it. Neither clears protected goals, consumed incidents or cooldown. Confirmed zero-input deferrals refund their charged incident once; uncertain or partial effects remain charged. Completed metadata does not prove useful work. The counter lives in the running helper and does not persist across a restart.
+
+Transition diagnostics report `automatic_retry_limit` when the ordinary-failure
+ceiling blocks a dispatch and `transient_retry_backoff` while transport retries
+wait. A readiness value of `ready` alone does not establish that a dispatch
+is due.

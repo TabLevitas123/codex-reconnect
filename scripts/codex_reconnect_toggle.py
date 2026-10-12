@@ -98,7 +98,8 @@ class TransitionDiagnostics:
         phases = {"off", "watching", "outage_pending", "outage", "recovery_pending"}
         guards = {name for name in Readiness.__dataclass_fields__ if name not in
                   ("target", "command_pending", "composer_idle", "desktop_idle", "goal_id", "stall_kind", "incident_id")}
-        reasons = {"ready", "target_unknown_or_changed", "composer_busy", "desktop_recent_input"}
+        reasons = {"ready", "target_unknown_or_changed", "composer_busy", "desktop_recent_input",
+                   "automatic_retry_limit", "transient_retry_backoff"}
         reasons |= {name + suffix for name in guards for suffix in ("_false", "_unknown")}
         record = {}
         for key, allowed in (("event", events), ("phase", phases), ("reason", reasons)):
@@ -222,8 +223,10 @@ class Controller:
         self.last_completed_incident: tuple | None = None
         self.rearm_epoch = cycle.enable_epoch
         self.retry_goal_id: str | None = None
+        self.retry_reason: str | None = None
 
     def accept(self, observation: Observation, now: float) -> None:
+        self.retry_reason = None
         old_pending, old_actions = self.pending_since, self.action_count
         previous_sample = self.cycle.last_sample
         sampled = observation.observed_at
@@ -244,7 +247,7 @@ class Controller:
                         "online": None if stale else observation.online,
                         "pending": self.pending_since is not None,
                         "sample_gap": previous_sample is not None and now - previous_sample > self.cycle.max_sample_gap,
-                        "stale_observation": stale, "reason": readiness.reason_code(self.target),
+                        "stale_observation": stale, "reason": self.retry_reason or readiness.reason_code(self.target),
                         "composer_idle": readiness.composer_idle, "desktop_idle": readiness.desktop_idle})
 
     def _accept(self, observation: Observation, now: float) -> None:
@@ -317,7 +320,8 @@ class Controller:
             self.last_completed_incident = incident
             self.consecutive_dispatches = 0
             self.charged_incidents.clear()
-        if self.consecutive_dispatches >= 2:
+        if self.consecutive_dispatches >= 2 and observation.readiness.stall_kind != "transport":
+            self.retry_reason = "automatic_retry_limit"
             self.ready_since = None
             self.label = "Blocked: automatic retry limit; inspect failure or rearm OFF/ON"
             return
@@ -326,8 +330,16 @@ class Controller:
         if now - self.ready_since < (max(30, self.ready_seconds) if observation.readiness.stall_kind == "active_idle" else self.ready_seconds):
             self.label = "Recovery pending. Confirming stable readiness"
             return
-        if self.last_dispatch is not None and now - self.last_dispatch < self.cycle.cooldown_seconds:
-            self.label = "Recovery pending. Waiting for cooldown"
+        retry_delay = self.cycle.cooldown_seconds
+        if observation.readiness.stall_kind == "transport":
+            # Fresh failed turns may retry; the same incident remains consumed.
+            retry_delay = max(retry_delay, min(300, 60 * 2 ** min(max(0, self.consecutive_dispatches - 1), 3)))
+        if self.last_dispatch is not None and now - self.last_dispatch < retry_delay:
+            if observation.readiness.stall_kind == "transport":
+                self.retry_reason = "transient_retry_backoff"
+                self.label = "Recovery pending. Waiting for transient retry backoff"
+            else:
+                self.label = "Recovery pending. Waiting for cooldown"
             return
         self.pending_since = self.ready_since = None
         self.last_dispatch = now
@@ -482,10 +494,6 @@ def resumable_turn(codex_dir: Path, thread_id: str, goal_status: str | None = No
                 message, re.IGNORECASE)
     if protected_message:
         return None, turn_id
-    if (goal_status == "blocked" and info == "other"
-            and error.get("additionalDetails") is None
-            and isinstance(message, str) and message.strip()):
-        return "goal_stall", turn_id
     if info == "other" and error.get("additionalDetails") is None:
         # This CLI reports these verified timeout diagnostics as `other`.
         # Match complete messages in memory; never generalize `other`.
@@ -499,6 +507,10 @@ def resumable_turn(codex_dir: Path, thread_id: str, goal_status: str | None = No
             "Transport error: network error: error decoding response body",
         ):
             return "transport", turn_id
+    if (goal_status == "blocked" and info == "other"
+            and error.get("additionalDetails") is None
+            and isinstance(message, str) and message.strip()):
+        return "goal_stall", turn_id
     if info in ("serverOverloaded", "flexUnavailable", "internalServerError"):
         return "transport", turn_id
     allowed = {"httpConnectionFailed", "responseStreamConnectionFailed",
@@ -744,11 +756,15 @@ class LiveObserver:
         self.pause_seen = False
         self.protected_goals: set[str] = set()
         self.current_goal_id: str | None = None
+        self.initial_goal_id: str | None = None
+        self.startup_adoption_allowed = True
         self.goal_epoch = 0
         self.connectivity = ConnectivitySchedule()
 
     def reset_cycle(self) -> None:
         self.baseline_goal = self.outage_goal = None
+        self.initial_goal_id = None
+        self.startup_adoption_allowed = True
         self.previous_online = None
         self.pause_seen = False
         if not hasattr(self, "protected_goals"):
@@ -759,6 +775,10 @@ class LiveObserver:
         self.connectivity = ConnectivitySchedule()
 
     def track_goal(self, goal: Goal, online: bool | None = None) -> None:
+        if self.initial_goal_id is None:
+            self.initial_goal_id = goal.goal_id
+        elif goal.goal_id != self.current_goal_id:
+            self.startup_adoption_allowed = False
         if goal.goal_id != self.current_goal_id:
             self.current_goal_id = goal.goal_id
             self.baseline_goal = self.outage_goal = None
@@ -767,7 +787,13 @@ class LiveObserver:
         if goal.status not in ("active", "blocked") or (goal.token_budget is not None and goal.tokens_used >= goal.token_budget):
             self.protected_goals.add(goal.goal_id)
         self.pause_seen = goal.goal_id in self.protected_goals
-        if online is True and goal.status == "active" and not self.pause_seen and self.baseline_goal != goal.goal_id:
+        # Startup may adopt only the first goal and a verified transport failure.
+        startup_transport = (online is True and self.startup_adoption_allowed
+                             and goal.status == "blocked"
+                             and goal.goal_id == self.initial_goal_id
+                             and self.baseline_goal is None and not self.pause_seen
+                             and resumable_turn(self.codex_dir, self.target.thread_id, goal.status)[0] == "transport")
+        if online is True and (goal.status == "active" or startup_transport) and not self.pause_seen and self.baseline_goal != goal.goal_id:
             self.baseline_goal = goal.goal_id
             self.outage_goal = None
             self.previous_online = None
