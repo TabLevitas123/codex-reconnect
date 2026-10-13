@@ -1,0 +1,43 @@
+{
+  "schema": "CODEX_RECONNECT_OWNERSHIP_RECOVERY_VERIFICATION_V1",
+  "date_utc": "2026-10-13",
+  "source_sha256": "468f6fea7a4b9209c1d1004f5b5d1cf224879b1635a7fb3c7c9f520092420d86",
+  "fixture_sha256": "d21414165090bcc98d82ad883426c1d5e1d3570db0d080a5912adb096363e733",
+  "unit_tests": {
+    "passed": 86,
+    "failed": 0,
+    "before_new_regression": "FAIL: zero dispatches where one required"
+  },
+  "independent_review": {
+    "source": "PASS",
+    "runtime": "PASS",
+    "source_review_sha256": "d477a89110dc9965bb39072147f51f7027b720e96815641c5f65aad3621153c6",
+    "runtime_review_sha256": "e68f6c25d4ee4349e95df259df76eee31af5dac4107c31c2e281a44c64dd10f3"
+  },
+  "x11_attempts": [
+    {
+      "attempt": 1,
+      "status": "FAIL_BEFORE_DISPATCH",
+      "reason": "No active X11 window while GNOME quick settings open",
+      "receipt_sha256": "0b2bf51fe1ae996d8d7940d84a2e699fa332752aede093f63ab4b1e9c4ec5eca"
+    },
+    {
+      "attempt": 2,
+      "status": "PASS",
+      "wall_seconds": 2.133218685979955,
+      "literal_command": "/goal resume",
+      "enter_events": 1,
+      "started_unfocused": true,
+      "old_focus_restored": true,
+      "owned_windows_closed": true,
+      "worker_joined": true,
+      "external_close_audit": true,
+      "receipt_sha256": "71fc71f172180003211dbc4110f2db853993c31d724e27c2c9906392ec9fa086"
+    }
+  ],
+  "installed_and_enabled": true,
+  "original_report_cause": "Old logs show draft guard deferral but do not distinguish content, caret or footer. Exact historical condition remains unresolved.",
+  "separately_reproduced_defect": "Unknown connectivity discarded a previously verified same-goal baseline. Fixed without relaxing draft checks.",
+  "natural_automatic_codex_continuation_verified": false,
+  "scope": "Owned synthetic history and composer with production observer, controller and X11 actuator. No live goal or credential mutation."
+}

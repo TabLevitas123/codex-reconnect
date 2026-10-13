@@ -1,8 +1,55 @@
 # Testing
 
+## 2026-10-13: ownership and composer diagnostics
+
+All 86 focused tests pass. The joined observer/controller regression first
+failed with zero dispatches instead of one after unknown connectivity discarded
+a verified same-goal baseline. The fix retains that baseline; goal changes
+still clear it. Composer diagnostics distinguish content, caret and footer
+failures without recording text or changing empty-draft acceptance.
+
+The earlier `draft_empty_false` log does not identify its underlying condition.
+A later live read found an empty composer and a running turn. That read does
+not establish the earlier cause or prove automatic continuation.
+
+The current source pin is bound in the owned fixture. A desktop owner can
+exercise the baseline-loss scenario in an unlocked X11 session:
+
+```bash
+/usr/bin/python3 tests/watch_to_x11_fixture.py --start-unfocused --baseline-loss --receipt /tmp/codex-reconnect-x11-result.json
+```
+
+The receipt path must not already exist. The fixture loads production source
+relative to its checkout and verifies ownership before closing its windows.
+An optional `--close-guard` must be the final argument. All remaining tokens
+are executable/argument entries; the fixture appends a normalized hexadecimal
+window ID and invokes them without a shell. For example:
+
+```bash
+/usr/bin/python3 tests/watch_to_x11_fixture.py --start-unfocused --baseline-loss --receipt /tmp/codex-reconnect-x11-result.json --close-guard /path/to/python /path/to/audit_protected_windows.py --check-close
+```
+
+On the project owner's desktop, supply the existing protected-window audit
+command. It must pass for each owned window before destruction. Without this
+option the fixture performs its own ownership check only.
+
+The final candidate passed the owned X11 scenario in 2.133 seconds. Starting
+behind a companion window, it activated the target, typed exactly
+`/goal resume`, pressed Enter once, and restored the companion's focus.
+Both owned windows closed after the explicit audit and the worker joined.
+The first attempt failed before dispatch because no active X11 window was
+available while GNOME quick settings was open. That failure was retained;
+the same candidate passed after the popup was dismissed.
+
+The fixture uses synthetic composer and SQLite inputs with the production
+observer, controller and actuator. It does not qualify live GNOME/TTY
+observation, provider recovery or actual Codex continuation. Independent
+source and result reviews passed. See the [verification record](ownership-recovery-verification.json).
+Historical results below remain tied to their earlier source revisions.
+
 ## Repeated timeout and startup recovery
 
-The current focused suite has 84 tests. It reproduces three distinct transport
+The previous focused suite had 84 tests. It reproduces three distinct transport
 failures through the production observer and controller, verifies continued
 retries with capped backoff, and keeps ordinary failures limited to two attempts.
 Startup cases cover an already blocked goal, offline and unknown connectivity,

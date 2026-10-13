@@ -28,6 +28,15 @@ class Target:
     executable: str
 
 
+COMPOSER_BLOCKERS = {
+    "composer_prompt_missing": "composer prompt unavailable",
+    "composer_content_unrecognized": "draft or unrecognized composer content",
+    "composer_caret_mismatch": "composer caret position unverified",
+    "composer_footer_unrecognized": "composer footer unrecognized",
+    "composer_input_mismatch": "typed command or caret changed",
+}
+
+
 @dataclass(frozen=True)
 class Readiness:
     """A live bridge must supply every guard; unknown never means ready."""
@@ -49,12 +58,15 @@ class Readiness:
     goal_id: str | None = None
     stall_kind: str | None = None
     incident_id: tuple | None = None
+    empty_reason: str | None = None
 
     def blocker(self, expected: Target) -> str | None:
         if self.target != expected:
             return "Target identity changed or unknown"
         for name in self.__dataclass_fields__:
-            if name not in ("target", "command_pending", "composer_idle", "desktop_idle", "goal_id", "stall_kind", "incident_id") and getattr(self, name) is not True:
+            if name not in ("target", "command_pending", "composer_idle", "desktop_idle", "goal_id", "stall_kind", "incident_id", "empty_reason") and getattr(self, name) is not True:
+                if name == "draft_empty" and self.empty_reason in COMPOSER_BLOCKERS:
+                    return "Blocked: " + COMPOSER_BLOCKERS[self.empty_reason]
                 if name == "idle" and self.idle is False:
                     if self.composer_idle is False:
                         return "Waiting: Codex is working"
@@ -67,9 +79,11 @@ class Readiness:
         if self.target != expected:
             return "target_unknown_or_changed"
         for name in self.__dataclass_fields__:
-            if name not in ("target", "command_pending", "composer_idle", "desktop_idle", "goal_id", "stall_kind", "incident_id"):
+            if name not in ("target", "command_pending", "composer_idle", "desktop_idle", "goal_id", "stall_kind", "incident_id", "empty_reason"):
                 value = getattr(self, name)
                 if value is not True:
+                    if name == "draft_empty" and self.empty_reason in COMPOSER_BLOCKERS:
+                        return self.empty_reason
                     if name == "idle" and value is False:
                         if self.composer_idle is False:
                             return "composer_busy"
@@ -97,9 +111,10 @@ class TransitionDiagnostics:
                   "action_requested", "action_sent_unverified", "action_deferred", "action_failed"}
         phases = {"off", "watching", "outage_pending", "outage", "recovery_pending"}
         guards = {name for name in Readiness.__dataclass_fields__ if name not in
-                  ("target", "command_pending", "composer_idle", "desktop_idle", "goal_id", "stall_kind", "incident_id")}
+                  ("target", "command_pending", "composer_idle", "desktop_idle", "goal_id", "stall_kind", "incident_id", "empty_reason")}
         reasons = {"ready", "target_unknown_or_changed", "composer_busy", "desktop_recent_input",
                    "automatic_retry_limit", "transient_retry_backoff"}
+        reasons |= set(COMPOSER_BLOCKERS)
         reasons |= {name + suffix for name in guards for suffix in ("_false", "_unknown")}
         record = {}
         for key, allowed in (("event", events), ("phase", phases), ("reason", reasons)):
@@ -567,6 +582,7 @@ class Composer:
     no_modal: bool
     interruption: bool
     command_pending: bool = False
+    empty_reason: str | None = None
 
 
 PLACEHOLDERS = {"Ask Codex to do anything", "Ask Codex to do anything.",
@@ -580,7 +596,7 @@ def parse_composer(text: str, caret: int, expected_input: str = "") -> Composer:
     lines = text.splitlines(keepends=True)
     prompts = [i for i, line in enumerate(lines) if re.match(r"^\s*›(?: |$)", line)]
     if not prompts:
-        return Composer(False, False, False, False)
+        return Composer(False, False, False, False, empty_reason="composer_prompt_missing")
     index = prompts[-1]
     prompt = lines[index].rstrip("\r\n")
     raw_suffix = re.sub(r"^\s*› ?", "", prompt)
@@ -622,7 +638,17 @@ def parse_composer(text: str, caret: int, expected_input: str = "") -> Composer:
         empty = raw_suffix.rstrip() in PLACEHOLDERS and caret_here
         pending = False
     # A bare blank prompt could contain invisible whitespace or clipped input.
-    return Composer(empty and tail_ok, not busy, not modal, interruption, pending)
+    empty_reason = None
+    if not empty:
+        if expected_input:
+            empty_reason = "composer_input_mismatch"
+        elif raw_suffix.rstrip() not in PLACEHOLDERS:
+            empty_reason = "composer_content_unrecognized"
+        else:
+            empty_reason = "composer_caret_mismatch"
+    elif not tail_ok:
+        empty_reason = "composer_footer_unrecognized"
+    return Composer(empty and tail_ok, not busy, not modal, interruption, pending, empty_reason)
 
 
 @dataclass(frozen=True)
@@ -846,6 +872,7 @@ class LiveObserver:
                 queue_empty=goal.queue_count == 0 and not goal.deferred,
                 command_pending=composer.command_pending,
                 composer_idle=composer.idle, desktop_idle=desktop_idle,
+                empty_reason=composer.empty_reason,
                 goal_id=goal.goal_id, stall_kind=stall_kind,
                 incident_id=(goal.goal_id, turn_id) if turn_id else None,
             )
@@ -862,8 +889,6 @@ class LiveObserver:
             self.track_goal(goal, online)
             if online is False and self.previous_online is True:
                 self.outage_goal = self.baseline_goal if goal.goal_id == self.baseline_goal else None
-            if online is None and self.outage_goal is None:
-                self.baseline_goal = None
             self.previous_online = online
         except Exception:
             # A failed observation cannot establish readiness or change goal ownership.

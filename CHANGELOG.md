@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-10-13: ownership retention and composer diagnostics
+
+- Retain a previously verified same-goal baseline through unknown connectivity;
+  keep clearing it on goal changes. The regression failed before the fix.
+- Report content, caret and footer blockers without recording their text or
+  weakening draft checks. The historical draft blocker remains unexplained.
+- Pass all 86 focused tests and refresh the owned X11 fixture source pin.
+  Its new `--baseline-loss` scenario passed real keyboard delivery from an
+  unfocused window after one preserved initial-focus failure. Independent
+  review passed. Natural automatic Codex continuation remains unverified.
+
 ## 2026-10-12: repeated timeout recovery
 
 - Keep retrying new recognized transport failures with capped backoff instead

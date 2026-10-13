@@ -20,7 +20,7 @@ TARGET = mod.Target("fixture-thread", "fixture-window", 12345, "42", "/fixture/c
 
 def ready():
     return mod.Readiness(target=TARGET, **{
-        field: True for field in mod.Readiness.__dataclass_fields__ if field not in ("target", "stall_kind", "incident_id")})
+        field: True for field in mod.Readiness.__dataclass_fields__ if field not in ("target", "stall_kind", "incident_id", "empty_reason")})
 
 
 class MockActuator:
@@ -110,7 +110,7 @@ class ReconnectTests(unittest.TestCase):
 
     def test_each_unknown_or_false_guard_blocks(self):
         for field in mod.Readiness.__dataclass_fields__:
-            if field in ("target", "command_pending", "composer_idle", "desktop_idle", "goal_id", "stall_kind", "incident_id"):
+            if field in ("target", "command_pending", "composer_idle", "desktop_idle", "goal_id", "stall_kind", "incident_id", "empty_reason"):
                 continue
             for value in (False, None):
                 with self.subTest(field=field, value=value):
@@ -209,6 +209,36 @@ class VisibleComposerTests(unittest.TestCase):
         for suffix, tail in cases:
             with self.subTest(suffix=suffix, tail=tail):
                 self.assertFalse(mod.parse_composer(*self.text(suffix, tail=tail)).empty)
+
+    def test_empty_guard_reasons_are_specific_and_never_include_content(self):
+        cases = [
+            (self.text('synthetic private draft'), 'composer_content_unrecognized'),
+            ((self.text()[0], self.text()[1] + 1), 'composer_caret_mismatch'),
+            (self.text(tail='\nunknown footer\n'), 'composer_footer_unrecognized'),
+            (('no composer prompt\n', 0), 'composer_prompt_missing'),
+        ]
+        for (text, caret), reason in cases:
+            with self.subTest(reason=reason):
+                composer = mod.parse_composer(text, caret)
+                self.assertFalse(composer.empty)
+                self.assertEqual(composer.empty_reason, reason)
+                item = replace(ready(), draft_empty=composer.empty,
+                               empty_reason=composer.empty_reason)
+                self.assertEqual(item.reason_code(TARGET), reason)
+                self.assertEqual(item.blocker(TARGET), 'Blocked: ' + mod.COMPOSER_BLOCKERS[reason])
+                with tempfile.TemporaryDirectory() as directory:
+                    path = Path(directory) / 'transitions.jsonl'
+                    diagnostics = mod.TransitionDiagnostics(path)
+                    cycle = mod.ReconnectCycle(); cycle.enable(True)
+                    controller = mod.Controller(TARGET, cycle, MockActuator(), trace=diagnostics)
+                    controller.accept(mod.Observation(True, item, 0), 0)
+                    record = json.loads(path.read_text())
+                    self.assertEqual(record['reason'], reason)
+                    self.assertNotIn('synthetic private draft', path.read_text())
+        text, caret = self.text('/goal resume changed')
+        composer = mod.parse_composer(text, caret + len('/goal resume changed'), '/goal resume')
+        self.assertFalse(composer.empty)
+        self.assertEqual(composer.empty_reason, 'composer_input_mismatch')
 
     def test_busy_approval_attachment_and_wrong_caret_reject(self):
         for marker in ["Working (esc to interrupt)", "Approve this command?", "image attached"]:
@@ -906,7 +936,7 @@ class LiveMissRegressionTests(unittest.TestCase):
     def pipeline(self, before, message='request timed out', info='other',
                  turn_status='failed', goal_status='active', details=None, misalignment=None,
                  newer=False, protected=False, identity=True, prompt='Ask Codex to do anything',
-                 token_budget=None, tokens_used=0, online_after=None, turn_schedule=None, trace=None, cold_start=False, online_state=True):
+                 token_budget=None, tokens_used=0, online_after=None, turn_schedule=None, trace=None, cold_start=False, online_state=True, online_schedule=None, startup_closed=False):
         import sqlite3
         text=before+'› '+prompt+'\n? for shortcuts\n'
         composer=mod.parse_composer(text,text.index('›')+2)
@@ -929,11 +959,14 @@ class LiveMissRegressionTests(unittest.TestCase):
             observer.reset_cycle()
             if not cold_start:
                 observer.current_goal_id,observer.baseline_goal='goal','goal'
+            if startup_closed:
+                observer.initial_goal_id='earlier-goal'
+                observer.startup_adoption_allowed=False
             if protected:
                 observer.protected_goals.add('goal')
             cycle=mod.ReconnectCycle();cycle.enable(True)
             actuator=MockActuator();controller=mod.Controller(TARGET,cycle,actuator,ready_seconds=3,trace=trace)
-            with patch.object(observer,'identity_ok',return_value=identity),patch.object(mod,'visible_composer',return_value=composer),patch.object(mod,'desktop_idle_ms',return_value=40000),patch.object(mod,'internet_online',side_effect=lambda: online_state if online_after is None or clock.return_value >= online_after else False),patch.object(mod.time,'monotonic') as clock:
+            with patch.object(observer,'identity_ok',return_value=identity),patch.object(mod,'visible_composer',return_value=composer),patch.object(mod,'desktop_idle_ms',return_value=40000),patch.object(mod,'internet_online',side_effect=lambda: online_schedule.get(clock.return_value, True) if online_schedule is not None else (online_state if online_after is None or clock.return_value >= online_after else False)),patch.object(mod.time,'monotonic') as clock:
                 for now in range(0, 212 if turn_schedule else (80 if online_after is not None else 12), 2):
                     if turn_schedule and now in turn_schedule:
                         with sqlite3.connect(root/'thread_history_1.sqlite') as db:
@@ -942,6 +975,14 @@ class LiveMissRegressionTests(unittest.TestCase):
                     clock.return_value=now
                     controller.accept(observer.observe(),now)
             return len(actuator.calls),composer.idle
+
+    def test_unknown_connectivity_keeps_verified_same_goal_recovery_baseline(self):
+        message = ('Error running remote compact task: stream disconnected before completion: '
+                   'Transport error: timeout')
+        calls, _ = self.pipeline('■ ' + message + '\n', message=message,
+                                goal_status='blocked', startup_closed=True,
+                                online_schedule={0: None})
+        self.assertEqual(calls, 1)
 
     def test_cold_start_adopts_online_blocked_known_transport_only(self):
         message = ('Error running remote compact task: stream disconnected before completion: '

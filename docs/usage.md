@@ -86,7 +86,9 @@ yourself before editing or submitting it; the helper never clears it.
 | Target changed or unknown | Verify current IDs and the original single-tab terminal. Relaunch with a freshly qualified binding if the process or widget changed. |
 | Composer busy | Codex may be working or reconnecting. The helper waits. A newer in-progress turn also blocks recovery. |
 | Desktop recent input | Stop typing or moving input for thirty seconds before the effect. |
-| Draft or unfamiliar layout | Preserve the draft. Resolve it manually. Unsupported placeholders, clipped input and attachments defer. |
+| Draft or unrecognized composer content | Preserve the input. Unsupported placeholders, clipped input and attachments defer. |
+| Composer caret position unverified | Confirm the selected session and resolve the input position manually. The helper does not move or clear it. |
+| Composer footer unrecognized | A changed layout cannot qualify as an empty draft. Preserve the input and report the layout change. |
 | Goal needs resume false | The latest turn may be unknown, interrupted, protected or still running. Blocked alone is insufficient; the latest turn must be a safely classified terminal failure. |
 | Protected goal | A pause, limit, completion or unknown goal status was observed. Protection does not clear automatically for that same goal. |
 | Automatic retry limit | Inspect the repeated failure. Explicit OFF/ON rearms the counter but does not remove protection or incident deduplication. |

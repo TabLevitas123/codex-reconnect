@@ -10,6 +10,7 @@ from pathlib import Path
 import queue
 import signal
 import sqlite3
+import subprocess
 import sys
 import tempfile
 import threading
@@ -17,8 +18,8 @@ import time
 import types
 from unittest.mock import patch
 
-SOURCE = Path(__file__).resolve().parents[1] / "scripts/codex_reconnect_toggle.py"
-SOURCE_SHA = "deda180fb8b3151b5a25fe28f94e1cb4bbc09a0b63cf7ff17a4fb98901501dea"
+SOURCE = Path(__file__).resolve().parents[1] / "scripts" / "codex_reconnect_toggle.py"
+SOURCE_SHA = "468f6fea7a4b9209c1d1004f5b5d1cf224879b1635a7fb3c7c9f520092420d86"
 REAL_CLOCK = time.monotonic
 REAL_SLEEP = time.sleep
 
@@ -37,7 +38,7 @@ def load_production():
     return module
 
 
-def history_fixture(directory, status):
+def history_fixture(directory, status, known_transport=False):
     directory.mkdir(mode=0o700)
     path = directory / "thread_history_1.sqlite"
     with sqlite3.connect(path) as db:
@@ -45,18 +46,37 @@ def history_fixture(directory, status):
                    "status TEXT, error_json TEXT, rollout_ordinal INTEGER)")
         error = json.dumps({"codexErrorInfo": "other", "additionalDetails": None,
                             "misalignment": None,
-                            "message": "Unexpected decoder crash while processing a response"}) if status == "failed" else None
+                            "message": ("Error running remote compact task: stream disconnected before completion: Transport error: timeout" if known_transport else "Unexpected decoder crash while processing a response")}) if status == "failed" else None
         db.execute("INSERT INTO thread_turns VALUES (?,?,?,?,1)",
                    ("owned-synthetic-thread", "owned-synthetic-turn", status, error))
     path.chmod(0o400)
     return path
 
 
-def main():
+def parse_arguments(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--receipt", type=Path, required=True)
     parser.add_argument("--start-unfocused", action="store_true")
-    args = parser.parse_args()
+    parser.add_argument("--baseline-loss", action="store_true")
+    parser.add_argument("--close-guard", nargs=argparse.REMAINDER,
+                        help="Optional final argument: audit executable and argv; hex window ID is appended, no shell")
+    args = parser.parse_args(argv)
+    if args.close_guard == []:
+        parser.error("--close-guard requires an executable")
+    return args
+
+
+def audit_owned_close(mod, xid, expected_pin, guard_argv):
+    pin = mod.window_pin(xid)
+    if pin.owner_pid != os.getpid() or (expected_pin is not None and pin != expected_pin):
+        raise RuntimeError("CLEANUP_WINDOW_NOT_OWNED")
+    if guard_argv is not None:
+        subprocess.run([*guard_argv, f"0x{int(mod.normalized_xid(xid)):08x}"],
+                       check=True, stdout=subprocess.DEVNULL, timeout=5)
+
+
+def main():
+    args = parse_arguments()
     if args.receipt.exists():
         raise RuntimeError("RECEIPT_ALREADY_EXISTS")
     mod = load_production()
@@ -136,7 +156,7 @@ def main():
         private.chmod(0o700)
         active = private / "in-progress"
         failed = private / "failed"
-        files = [history_fixture(active, "inProgress"), history_fixture(failed, "failed")]
+        files = [history_fixture(active, "inProgress"), history_fixture(failed, "failed", args.baseline_loss)]
         fixture_pins = {str(p.relative_to(private)): digest(p) for p in files}
         frozen_goal = mod.Goal("owned-synthetic-goal", "active", None, 0, 0, False)
 
@@ -182,6 +202,8 @@ def main():
 
                 def network():
                     probes.append(now[0])
+                    if args.baseline_loss:
+                        return None if now[0] == 2 else True
                     return now[0] == 0 or now[0] >= 62
 
                 def safe_command(argv):
@@ -241,6 +263,8 @@ def main():
                 assert not cycle.enabled
                 observer.reset_cycle()
                 cycle.enable(True)
+                if args.baseline_loss:
+                    observer.track_goal(mod.Goal("owned-prior-goal", "active", None, 0, 0, False), True)
                 permitted.set()
                 clock_adapter = types.SimpleNamespace(monotonic=lambda: now[0])
                 # Keep real actuator clock/sleep separate from scheduler time.
@@ -250,7 +274,7 @@ def main():
                      patch.object(mod, "desktop_idle_ms", lambda: 30000), \
                      patch.object(mod, "internet_online", network):
                     assert mod.resumable_turn(active, target.thread_id) == (None, "owned-synthetic-turn")
-                    assert mod.resumable_turn(failed, target.thread_id, "blocked") == ("goal_stall", "owned-synthetic-turn")
+                    assert mod.resumable_turn(failed, target.thread_id, "blocked") == ("transport" if args.baseline_loss else "goal_stall", "owned-synthetic-turn")
                     for tick in range(0, 144, 2):
                         if abort.is_set() or REAL_CLOCK() - started > 25:
                             raise RuntimeError("REAL_WALL_TIMEOUT")
@@ -273,13 +297,17 @@ def main():
                                              "actions": controller.action_count, "label": controller.label})
                         if tick == 0:
                             assert observation.readiness.stall_kind is None and controller.action_count == 0
-                        if 2 <= tick < 62:
+                        if args.baseline_loss and tick == 2:
+                            assert observation.online is None and controller.action_count == 0
+                            assert observer.baseline_goal == "owned-synthetic-goal"
+                            assert observer.startup_adoption_allowed is False
+                        if not args.baseline_loss and 2 <= tick < 62:
                             assert observation.online is False and controller.action_count == 0
                         if controller.action_count > before:
-                            assert tick >= 66
+                            assert tick >= (8 if args.baseline_loss else 66)
                             assert dispatch[-1]["result"] == "Sent /goal resume. Continuation is not yet verified."
                     value, count, values = fresh_buffer()
-                    assert probes[:4] == [0.0, 2.0, 32.0, 62.0]
+                    assert probes[:4] == ([0.0, 2.0, 4.0, 6.0] if args.baseline_loss else [0.0, 2.0, 32.0, 62.0])
                     assert all(b - a == 2 for a, b in zip(probes[3:], probes[4:]))
                     assert len(dispatch) == controller.action_count == count == 1
                     assert values == ("/goal resume",) and value == ""
@@ -293,7 +321,7 @@ def main():
                         activations = [argv[2] for argv in commands if argv[:2] == ["wmctrl", "-ia"]]
                         assert activations == [target.window_id, answers["other_xid"]]
                         assert dispatch[0]["started_unfocused"] and dispatch[0]["old_focus_restored"]
-                    receipt.update(status="PASS", start_unfocused=args.start_unfocused, probe_times=probes, observations=observations,
+                    receipt.update(status="PASS", baseline_loss=args.baseline_loss, start_unfocused=args.start_unfocused, probe_times=probes, observations=observations,
                                    dispatch=dispatch, controller_action_count=1, returns=1,
                                    received=list(values), commands=commands,
                                    private_history_unchanged=True, synthetic_goal_unchanged=True,
@@ -370,6 +398,10 @@ def main():
                 worker.join(timeout=2)
                 if worker.is_alive():
                     receipt.update(status="FAIL", failure="WORKER_DID_NOT_STOP")
+            for close_xid in ([target.window_id] if target else []) + ([answers["other_xid"]] if "other_xid" in answers else []):
+                expected_pin = answers.get("window_pin") if target and close_xid == target.window_id else answers.get("other_pin")
+                audit_owned_close(mod, close_xid, expected_pin, args.close_guard)
+            receipt["external_close_guard_used"] = args.close_guard is not None
             if other is not None:
                 other.destroy()
                 receipt["owned_companion_closed"] = True

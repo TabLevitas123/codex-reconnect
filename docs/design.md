@@ -18,7 +18,9 @@ prove that the model provider is reachable.
 Offline probes run every thirty seconds; online or unknown probes are due
 every two seconds. Network debounce requires six-second outage and recovery
 periods. Unknown samples or a long gap reset debounce. Already pending
-same-goal recovery survives them and waits for verified connectivity.
+same-goal recovery survives them and waits for verified connectivity. A previously
+verified same-goal baseline also survives unknown connectivity before pending
+recovery begins; a different goal still clears that baseline.
 
 An active goal observed online establishes the baseline. At startup or after
 OFF/ON, the first observed goal can also establish it while online if it is
@@ -118,3 +120,9 @@ Transition diagnostics report `automatic_retry_limit` when the ordinary-failure
 ceiling blocks a dispatch and `transient_retry_backoff` while transport retries
 wait. A readiness value of `ready` alone does not establish that a dispatch
 is due.
+
+Composer diagnostics distinguish `composer_content_unrecognized`,
+`composer_caret_mismatch`, `composer_footer_unrecognized`,
+`composer_prompt_missing` and `composer_input_mismatch`. Labels describe the
+failed check without exposing text. Unrecognized content or a footer mismatch
+never qualifies as an empty draft.
