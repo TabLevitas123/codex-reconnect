@@ -724,10 +724,22 @@ def terminal_context(xid: str) -> tuple[TerminalBinding, object]:
     ).unpack()[0]
     if not single_tab_actions(actions):
         raise ValueError("Target must remain a single-tab terminal window")
+    owner_pid = connection.call_sync(
+        "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus",
+        "GetConnectionUnixProcessID", GLib.Variant("(s)", (bus_name,)),
+        GLib.VariantType.new("(u)"), Gio.DBusCallFlags.NONE, 1000, None,
+    ).unpack()[0]
+    if type(owner_pid) is not int or owner_pid <= 0:
+        raise ValueError("GTK window process identity unavailable")
     frames = []
     desktop = Atspi.get_desktop(0)
     for i in range(desktop.get_child_count()):
         app = desktop.get_child_at_index(i)
+        try:
+            if app.get_process_id() != owner_pid:
+                continue
+        except Exception:
+            continue
         for j in range(app.get_child_count()):
             frame = app.get_child_at_index(j)
             try:

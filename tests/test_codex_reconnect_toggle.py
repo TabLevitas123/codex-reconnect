@@ -8,6 +8,7 @@ import tempfile
 import json
 import unittest
 from unittest.mock import patch
+from types import SimpleNamespace
 
 SPEC = importlib.util.spec_from_file_location(
     "codex_reconnect_toggle", Path(__file__).parents[1] / "scripts/codex_reconnect_toggle.py")
@@ -310,6 +311,118 @@ class VisibleComposerTests(unittest.TestCase):
         for t, online in [(12, False), (14, False), (15, True), (17, True)]:
             controller.accept(mod.Observation(online, replace(qualified, idle=new_run.idle), t), t)
         self.assertEqual(len(actuator.calls), 1)
+
+
+class TerminalContextTests(unittest.TestCase):
+    def context(self, application_pids=(900, 901), duplicate_target=False, owner_pid=900,
+                operation=None):
+        class Node:
+            def __init__(self, role, path, children=(), pid=None):
+                self.role, self.path, self.children, self.pid = role, path, list(children), pid
+
+            def get_child_count(self):
+                return len(self.children)
+
+            def get_child_at_index(self, index):
+                return self.children[index]
+
+            def get_process_id(self):
+                return self.pid
+
+            def get_role_name(self):
+                return self.role
+
+            def get_component_iface(self):
+                return SimpleNamespace(get_extents=lambda unused: SimpleNamespace(
+                    x=66, y=32, width=1854, height=1048))
+
+            def get_state_set(self):
+                return SimpleNamespace(contains=lambda unused: True)
+
+            def get_text_iface(self):
+                return self
+
+        terminal = Node('terminal', '/target/terminal')
+        terminal.text = '■ request timed out\n› Ask Codex to do anything\n? for shortcuts\n'
+        terminal.caret = terminal.text.index('›') + 2
+        target = Node('frame', '/target/frame', [Node('page tab', '/target/tab'), terminal])
+        apps = []
+        for index, pid in enumerate(application_pids):
+            frames = [target] if pid == 900 else [Node('frame', '/unrelated/frame')]
+            if pid == 900 and duplicate_target:
+                frames.append(Node('frame', '/target/duplicate'))
+            apps.append(Node('application', '/app/' + str(index), frames, pid))
+        desktop = Node('desktop', '/desktop', apps)
+        actions = {name: (False, '', []) for name in
+                   ('tabs-menu', 'tab-switch-left', 'tab-switch-right', 'tab-detach')}
+        actions['active-tab'] = (False, 'i', [0])
+        def call(*args):
+            if args[3] == 'DescribeAll':
+                return SimpleNamespace(unpack=lambda: (actions,))
+            self.assertEqual(args[:4], ('org.freedesktop.DBus', '/org/freedesktop/DBus',
+                                       'org.freedesktop.DBus', 'GetConnectionUnixProcessID'))
+            return SimpleNamespace(unpack=lambda: (owner_pid,))
+        connection = SimpleNamespace(call_sync=call)
+        gio = SimpleNamespace(bus_get_sync=lambda *unused: connection,
+                              BusType=SimpleNamespace(SESSION=0),
+                              DBusCallFlags=SimpleNamespace(NONE=0))
+        glib = SimpleNamespace(VariantType=SimpleNamespace(new=lambda value: value),
+                               Variant=lambda *args: args)
+        atspi = SimpleNamespace(get_desktop=lambda unused: desktop,
+                                CoordType=SimpleNamespace(SCREEN=0),
+                                StateType=SimpleNamespace(SHOWING=0),
+                                Text=SimpleNamespace(
+                                    get_character_count=lambda node: len(node.text),
+                                    get_text=lambda node, start, end: node.text[start:end],
+                                    get_caret_offset=lambda node: node.caret))
+        with patch.object(mod, 'gi_modules', return_value=(atspi, gio, glib)), \
+                patch.object(mod, 'window_geometry', return_value=(66, 32, 1854, 1048)), \
+                patch.object(mod, 'gtk_window_properties', return_value=(':target', '/window')):
+            if operation is not None:
+                return operation(desktop, terminal)
+            return mod.terminal_context('100'), terminal
+
+    def test_same_geometry_unrelated_application_does_not_hide_qualified_terminal(self):
+        (binding, terminal), expected_terminal = self.context()
+        self.assertEqual(binding, mod.TerminalBinding(':target', '/window', '/target/frame',
+                                                     '/target/tab', '/target/terminal'))
+        self.assertIs(terminal, expected_terminal)
+
+    def test_missing_owner_and_duplicate_owner_frames_stay_blocked(self):
+        for options in ({'application_pids': (901,)}, {'duplicate_target': True},
+                        {'owner_pid': 0}, {'owner_pid': None}):
+            with self.subTest(options=options), self.assertRaises(ValueError):
+                self.context(**options)
+
+    def test_same_geometry_foreign_frame_after_typing_still_delivers_enter(self):
+        def exercise(desktop, terminal):
+            # The unrelated app becomes visible between typing and reflection.
+            foreign_app = desktop.children.pop()
+            binding, unused_terminal = mod.terminal_context('100')
+            target = replace(TARGET, window_id='100')
+            observer = object.__new__(mod.LiveObserver)
+            observer.target, observer.codex_dir, observer.binding = target, Path('/fixture'), binding
+            observer.reset_cycle()
+            observer.current_goal_id = observer.baseline_goal = 'fixture-goal'
+            calls = []
+            def runner(args):
+                calls.append(args)
+                if 'type' in args:
+                    terminal.text = '■ request timed out\n› /goal resume\n? for shortcuts\n'
+                    terminal.caret = terminal.text.index('›') + 2 + len('/goal resume')
+                    desktop.children.append(foreign_app)
+                return '100' if 'getactivewindow' in args else 'fixture'
+            with patch.object(observer, 'identity_ok', return_value=True), \
+                    patch.object(mod, 'read_goal', return_value=mod.Goal(
+                        'fixture-goal', 'blocked', None, 0, 0, False)), \
+                    patch.object(mod, 'resumable_turn', return_value=('transport', 'fixture-turn')), \
+                    patch.object(mod, 'desktop_idle_ms', return_value=30001):
+                approved = observer.readiness()
+                result = mod.X11Actuator(observer.readiness, lambda: True, runner).resume(target, approved)
+            self.assertIn('Sent /goal resume', result)
+            self.assertEqual(sum('type' in args for args in calls), 1)
+            self.assertEqual(sum('key' in args for args in calls), 1)
+        self.context(operation=exercise)
 
 
 class X11AdapterTests(unittest.TestCase):

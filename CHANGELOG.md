@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-10-14: Enter delivery after an accessibility collision
+
+- Match the accessible application's process to the GTK bus owner before
+  selecting its window by geometry. Missing owners and duplicate frames still
+  block. Draft, pause, approval and refusal checks remain intact.
+- Reproduce typing without Enter when an unrelated frame appears at the same
+  geometry. Pass all 89 focused tests and independent source review.
+- Pass the updated owned X11 fixture with one command and Enter, restored
+  focus and both-window cleanup in 1.99951 seconds. Install the corrected
+  helper and confirm it recognizes the live terminal while Codex is working.
+  Synthetic fixture metadata does not prove natural automatic continuation.
+  See [verification](docs/enter-verification.json).
+
 ## 2026-10-13: ownership retention and composer diagnostics
 
 - Retain a previously verified same-goal baseline through unknown connectivity;

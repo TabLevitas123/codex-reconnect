@@ -1,0 +1,47 @@
+{
+  "schema": "CODEX_RECONNECT_ENTER_VERIFICATION_V1",
+  "date": "2026-10-14",
+  "status": "PASS_BOUNDED",
+  "source_sha256": "b6f2ce1454db30c290befcf74b13df1897f584645bedc8f1faa86e67f44c0d43",
+  "tests_sha256": "c5a1dec8877d538ba66dd96248a1fee6909d8f0d91d1cdb6ba8cee205b494454",
+  "fixture_sha256": "3dd8f521cd4e130f4ee58e7a92191003bcea98ffc39746fa91e9a301db179912",
+  "source_review": {
+    "decision": "APPROVE_EXACT_SOURCE_SLICE",
+    "private_receipt_sha256": "9469ffbeb2d88f4c560d602af1b4fe55ebfe66ea69770b186521583aed6bff58",
+    "focused_tests_passed": 89,
+    "blocking_findings": 0
+  },
+  "regression": {
+    "trigger": "Unrelated accessible application appears at the target geometry after typing",
+    "previous_source": "One type, no Enter; unknown readiness reported as a changed goal",
+    "corrected_source": "GTK bus owner qualifies the accessible application; one type and Enter"
+  },
+  "owned_x11_fixture": {
+    "status": "PASS",
+    "private_receipt_sha256": "78ed52fb5eae88049350342740b6f1e3934959ad6ae0deea1e835d1b42e7712b",
+    "command_count": 1,
+    "enter_count": 1,
+    "real_wall_seconds": 1.99951,
+    "started_unfocused": true,
+    "old_focus_restored": true,
+    "owned_target_closed": true,
+    "owned_companion_closed": true,
+    "external_close_guard_used": true,
+    "worker_joined": true,
+    "connectivity_and_metadata": "synthetic",
+    "target_observations": "fixture adapters",
+    "keyboard_adapter": "production X11Actuator"
+  },
+  "post_install_observation": {
+    "installed_source_matches": true,
+    "monitoring_enabled": true,
+    "label": "ON. Waiting: Codex is working",
+    "previous_target_identity_error_cleared": true,
+    "goal_input_sent_while_turn_running": false
+  },
+  "limits": [
+    "Historical sends lack the actuator refusal reason; their exact cause remains unproven",
+    "The owned fixture does not qualify full live GNOME/TTY observation or provider recovery",
+    "Natural automatic Codex continuation remains unverified"
+  ]
+}

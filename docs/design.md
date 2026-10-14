@@ -78,6 +78,10 @@ Continuous checks pin process start times, executable, foreground TTY, backend
 thread files, GTK window identity and the original accessible tab and terminal.
 Exactly one tab and one terminal must remain. This proves original-widget
 continuity; GNOME Terminal exposes no native accessible PID/TTY association.
+Frame selection first requires the accessible application's process ID to
+match the owner of the window's GTK bus connection. Geometry then identifies
+the frame within that application. Missing owners and multiple matching
+frames still block; unrelated applications cannot qualify by geometry alone.
 
 AT-SPI terminal text is read only in memory. A recognized empty placeholder,
 caret position and footer must match. GPT footer names allow either case;

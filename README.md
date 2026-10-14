@@ -9,11 +9,21 @@ no API credentials. Its connectivity checks use unauthenticated HTTPS.
 
 Project: [TabLevitas123/codex-reconnect](https://github.com/TabLevitas123/codex-reconnect).
 
-The current implementation passes 86 focused tests. An owned blocked goal can qualify when its latest turn failed with an unfamiliar ordinary technical error. Recovery no longer depends only on exact transport messages. Explicit pauses, limits, approvals, security or refusal states, authentication, quota, context limits, user interruption and ambiguous needed-user decisions remain protected.
+The current implementation passes 89 focused tests. Terminal accessibility checks
+match the GTK bus owner's process before comparing window geometry. Unrelated
+applications with the same bounds no longer interrupt command delivery.
+An owned blocked goal can qualify when its latest turn failed with an unfamiliar ordinary technical error. Recovery no longer depends only on exact transport messages. Explicit pauses, limits, approvals, security or refusal states, authentication, quota, context limits, user interruption and ambiguous needed-user decisions remain protected.
 
 Allowlisted transport failures can retry on new failed turns with a delay that grows from sixty seconds to five minutes. Unfamiliar ordinary failures stop after two consecutive automatic attempts until a new safe completed active turn or explicit OFF/ON rearm. Incident deduplication and all readiness guards still apply. Read [design and limits](docs/design.md) for the exact boundary.
 
-Independent source review passed. One owned X11 fixture started with the target behind an unfocused companion window. The production adapter activated the target, delivered exactly one `/goal resume` and Enter, restored the companion's focus and closed both owned windows. The run took 1.9395 seconds with scripted connectivity and synthetic metadata. See [verification](docs/stall-recovery-verification.json). Natural automatic live continuation remains unverified. Prior [network-error verification](docs/network-decoding-verification.json) remains historical evidence.
+Independent source review passed all 89 tests. The corrected source passed an
+owned X11 fixture from an unfocused target, delivering exactly one `/goal resume`
+and Enter, restoring the companion's focus and closing both owned windows in
+1.99951 seconds. The fixture used scripted connectivity and synthetic metadata.
+The installed helper then recognized its live terminal and displayed
+`ON. Waiting: Codex is working`. See [verification](docs/enter-verification.json).
+Natural automatic live continuation remains unverified. Earlier verification
+records remain tied to their recorded source revisions.
 
 ## Supported setup
 

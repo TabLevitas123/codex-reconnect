@@ -1,5 +1,37 @@
 # Testing
 
+## 2026-10-14: Enter withheld after an accessibility collision
+
+The 89-test suite includes a regression through the real terminal binding,
+composer parser, observer and X11 actuator. An unrelated application's frame
+appears at the target's geometry after typing. Against the previous source,
+the adapter types once, withholds Enter and reports a changed goal because
+the failed accessibility lookup returns unknown readiness. The corrected
+lookup matches the GTK bus owner's process first and sends Enter once.
+
+Missing or invalid owners and duplicate frames within the owner's application
+still block. Original widget continuity and all existing draft, pause, approval,
+refusal, incident and focus guards remain in effect. These tests use synthetic
+AT-SPI objects and mocked keyboard effects. They do not prove natural recovery
+or identify the exact cause of earlier sends whose diagnostics omitted the
+actuator's refusal reason. A read-only desktop check reproduced the ambiguity
+with the installed previous source. The candidate then found the original
+terminal and recognized an empty composer while its turn was running. That
+check sent no keys.
+
+Independent review approved the exact source and passed all 89 tests. The
+updated owned X11 fixture then passed in 1.99951 seconds from an unfocused
+target. It received exactly one `/goal resume` and Enter, restored the
+companion's focus, closed both owned windows after the close audit and joined
+its worker. Connectivity, metadata and target observations were synthetic;
+the keyboard adapter was the production implementation.
+
+The corrected source was installed. A fresh helper observation showed
+`ON. Waiting: Codex is working` and cleared the previous target identity error.
+No goal command was sent while that turn was running. This establishes the
+bounded keyboard route and live binding repair, without proving natural
+automatic continuation. See the [portable receipt](enter-verification.json).
+
 ## 2026-10-13: ownership and composer diagnostics
 
 All 86 focused tests pass. The joined observer/controller regression first
