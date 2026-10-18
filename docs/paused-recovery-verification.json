@@ -1,0 +1,55 @@
+{
+  "schema": "CODEX_RECONNECT_PAUSED_RECOVERY_VERIFICATION_V1",
+  "date": "2026-10-18",
+  "status": "PASS_BOUNDED",
+  "source_sha256": "f32c77f893e7adaeb9ea385e2853b9506c5a4b44ff08b81f6671cc1b5d592d56",
+  "tests_sha256": "b7d900b427b25f65ddb73ec4ef66588f71fb6587d021fad89efc2dea1aec33d7",
+  "fixture_sha256": "94348d14d1af1be859a2ebd1beb9d19a65daffe933782e14faf40d679ef6925c",
+  "focused_tests": {
+    "passed": 97,
+    "scope": "Synthetic observer/controller, keyboard guard and ACTIVE verification tests"
+  },
+  "owned_x11_fixture": {
+    "status": "PASS",
+    "private_receipt_sha256": "7bd91915bdb6041176819e7ef20a72870c69d7022c332fd7a5bab51a4a029a24",
+    "command": "/goal resume",
+    "command_count": 1,
+    "enter_count": 1,
+    "real_wall_seconds": 2.3966248,
+    "started_unfocused": true,
+    "old_focus_restored": true,
+    "owned_target_closed": true,
+    "owned_companion_closed": true,
+    "external_close_guard_used": true,
+    "worker_joined": true,
+    "private_history_unchanged": true,
+    "connectivity_and_metadata": "synthetic",
+    "target_observations": "owned fixture adapters",
+    "keyboard_adapter": "production X11Actuator",
+    "active_acknowledgment": "Synthetic ACTIVE metadata after the owned window received Enter",
+    "synthetic_active_ack_verified": true
+  },
+  "post_install_observation": {
+    "private_receipt_sha256": "76ade120971170604c929432b233f2340f551cc96386d554ec5fa9ef7ab3cccc",
+    "installed_source_matches": true,
+    "monitoring_enabled": true,
+    "label": "ON. Waiting: Codex is working",
+    "online": true,
+    "composer_idle": false,
+    "reason": "composer_busy",
+    "pending": false,
+    "goal_command_sent_while_turn_running": false
+  },
+  "authority_boundary": {
+    "starts_off": true,
+    "on_permits": "Owned same-goal PAUSED with latest INTERRUPTED turn and null error after an observed ACTIVE baseline",
+    "intent_limitation": "Goal metadata has no pause reason and cannot distinguish accidental from deliberate Escape",
+    "intentional_stop": "Use OFF before intentionally stopping or pausing the goal"
+  },
+  "limits": [
+    "Owned X11 acceptance verifies one guarded keyboard delivery and synthetic ACTIVE acknowledgment, not a native goal transition.",
+    "Fixture target observation does not qualify full live GNOME/TTY observation, asynchronous UI generation handling or provider recovery.",
+    "The post-install observation verifies the running helper recognizes a busy qualified terminal and sends no goal command in that observation.",
+    "Natural automatic live goal recovery and useful progress remain unverified."
+  ]
+}

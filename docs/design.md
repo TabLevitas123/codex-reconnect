@@ -30,8 +30,8 @@ baseline. Offline or unknown connectivity, newer in-progress turns, blocked
 completed turns and protected goals cannot establish this startup baseline.
 A different goal
 clears old ownership and pending intent. A change observed offline cannot
-inherit old recovery. Observed pauses, limits, completion and unknown goal
-statuses latch protection for that goal. Reobserving it as active or toggling
+inherit old recovery. Unowned pauses, limits, completion and unknown goal
+statuses latch protection for that goal. A pause of the owned active baseline waits for eligible interrupted-turn metadata without latching a temporary row-update mismatch. Reobserving it as active or toggling
 OFF/ON does not clear protection.
 
 ## Eligible stalls
@@ -45,8 +45,9 @@ the latest failed or completed turn. It reads SQLite in read-only mode.
 | Blocked goal and latest failed turn with an ordinary technical error | Can qualify without exact transport wording, with three-second readiness debounce and all guards below. |
 | Failed turn with an allowlisted typed transient | Can qualify after three seconds of consistent readiness with the same online baseline. |
 | Newer in-progress turn | Blocks, even if the goal still reports blocked. |
-| Interrupted turn, ambiguous stop or missing metadata | Blocks. |
-| Paused, limited, complete or protected goal | Blocks. |
+| Paused owned goal, latest interrupted turn with null error | Can qualify after three seconds of consistent readiness while ON. |
+| Other interrupted turn, ambiguous stop or missing metadata | Blocks. |
+| Unowned paused, limited, complete or protected goal | Blocks. |
 
 Allowed transient types are `serverOverloaded`, `flexUnavailable`,
 `internalServerError`, `httpConnectionFailed`, `responseStreamConnectionFailed`,
@@ -86,7 +87,7 @@ frames still block; unrelated applications cannot qualify by geometry alone.
 AT-SPI terminal text is read only in memory. A recognized empty placeholder,
 caret position and footer must match. GPT footer names allow either case;
 composer input and `/goal resume` remain case-sensitive. Busy, reconnecting,
-modal and explicit-stop indicators block. Mutter's idle monitor requires
+modal and explicit-stop indicators block. For an eligible paused goal, a bare "Goal paused" notice is informational. Other modal text and visible `/goal pause`, `/goal clear` or user-stop wording still block. Mutter's idle monitor requires
 thirty seconds without desktop input before activation and typing.
 
 Before each effect, the adapter checks ON generation and fresh readiness.
@@ -108,13 +109,12 @@ The observer depends on the CLI layout and SQLite schema. Unknown or changed
 observations block. Wayland, multiple terminal tabs, other terminal emulators,
 crashed sessions and unattended login recovery are unsupported.
 
-"Sent /goal resume" confirms the keyboard sequence. It does not verify a new
-Codex turn. Automated tests and a dummy keyboard fixture do not establish
+"Sent /goal resume" confirms the keyboard sequence. Subsequent fresh observations must match the qualified target and goal and show ACTIVE before the control reports "Verified: goal is ACTIVE". After fifteen seconds without that observation it reports unverified and never repeats the same incident. A newer incident still uses the existing cooldown and retry caps. OFF or a different goal cancels verification. ACTIVE metadata does not verify a new Codex turn or useful progress. Automated tests and a dummy keyboard fixture do not establish
 actual CLI continuation after a real outage.
 
 ## Blocked-goal failures and retries
 
-The goal schema has status and budget fields but no stop reason. BLOCKED alone is insufficient. The new lane requires the latest overall turn to be FAILED with type `other`, a nonempty message, null additional details and null misalignment. Unfamiliar technical wording may qualify. Required input or decisions, approval, pause, limit, security, refusal, authentication, quota, context exhaustion and user-interruption wording block before failure eligibility. Missing or ambiguous metadata, interrupted turns, blocked completed turns and newer in-progress turns remain blocked. This does not make every error recoverable.
+The goal schema has status and budget fields but no stop reason. BLOCKED alone is insufficient. The new lane requires the latest overall turn to be FAILED with type `other`, a nonempty message, null additional details and null misalignment. Unfamiliar technical wording may qualify. Required input or decisions, approval, pause, limit, security, refusal, authentication, quota, context exhaustion and user-interruption wording block before failure eligibility. Missing or ambiguous metadata, interrupted turns outside the paused-recovery lane, blocked completed turns and newer in-progress turns remain blocked. This does not make every error recoverable.
 
 A terminal error boundary ends preceding historical activity, including the existing warning transport markers. Activity after the newest boundary still blocks. Rendering grants no eligibility by itself; goal and latest-turn metadata remain required.
 
@@ -130,3 +130,22 @@ Composer diagnostics distinguish `composer_content_unrecognized`,
 `composer_prompt_missing` and `composer_input_mismatch`. Labels describe the
 failed check without exposing text. Unrecognized content or a footer mismatch
 never qualifies as an empty draft.
+
+## Paused recovery authority
+
+Every launch starts OFF. ON authorizes automatic recovery when a previously
+observed active goal becomes PAUSED and its latest overall turn is INTERRUPTED
+with null error metadata. An already paused goal cannot establish startup
+ownership. Newer running turns, exhausted budgets, deferred continuation,
+queue entries, drafts and all target checks continue to block input.
+
+The goal schema records no pause reason. The helper cannot distinguish an
+accidental Escape from an intentional Escape or an unrecorded pause command.
+Use OFF before intentionally stopping a goal. Visible stop commands and
+user-stop wording block, but their absence does not prove accidental input.
+The control displays this limitation while ON. No rollout history is scanned.
+
+One paused goal/turn incident gets one attempt. A known zero-input deferral
+can retry under the existing rules; partial or uncertain input stays consumed.
+The ordinary two-attempt ceiling applies to new paused incidents. Other
+protected states retain their protection across OFF/ON and reobserved ACTIVE.

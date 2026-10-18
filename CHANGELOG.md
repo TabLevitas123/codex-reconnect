@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-10-18: paused recovery candidate
+
+- Let ON recover a previously observed active goal after PAUSED/interrupted
+  metadata, with all target, draft, readiness and retry guards.
+- Keep startup pauses and other protected states blocked. Explain visibly
+  that the schema has no pause reason and OFF preserves an intentional stop.
+- Verify fresh same-target, same-goal ACTIVE metadata after keyboard delivery.
+  Report an unverified result after fifteen seconds without that observation.
+- Add synthetic observer/controller and verification regressions. Live
+  activation and natural recovery remain unverified for this candidate.
+
 ## 2026-10-14: Enter delivery after an accessibility collision
 
 - Match the accessible application's process to the GTK bus owner before

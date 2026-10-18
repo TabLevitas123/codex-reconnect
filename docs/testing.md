@@ -1,5 +1,37 @@
 # Testing
 
+## 2026-10-18: paused recovery candidate
+
+All 97 focused tests pass. `git diff --check` passes.
+
+New synthetic tests reproduce ACTIVE to PAUSED with an interrupted latest turn,
+including separately updated goal and turn rows. Recovery dispatches once with
+a verified same-goal baseline. Cold-start pauses, newer in-progress turns,
+errors, drafts, changed identity, modal approvals, visible stop commands,
+protected states, missing connectivity and budgets remain negative cases.
+
+Joined observer/controller coverage also checks command delivery followed by
+fresh ACTIVE metadata. Controller tests withhold verification for unchanged
+PAUSED, BLOCKED, stale and unqualified observations, and cancel verification
+on OFF or a different goal. These tests use private SQLite fixtures and mocked
+keyboard effects. They do not prove live desktop delivery or natural recovery.
+
+The reviewed source passed the owned X11 fixture with `--paused-goal` and
+`--start-unfocused` in 2.3966 seconds. The production observer, controller and
+keyboard adapter delivered exactly one `/goal resume` and Enter to the owned
+text window. The fixture restored the companion's focus, closed both owned
+windows after the external close guard passed, and joined its worker. Private
+history remained unchanged. Connectivity, goal metadata and target observation
+were synthetic. The ACTIVE acknowledgment used synthetic metadata after the
+owned window received Enter, so it does not prove a native goal transition.
+
+The reviewed helper was installed and enabled. Its fresh observation showed
+`ON. Waiting: Codex is working`, verified online connectivity and
+`composer_busy`, with no pending recovery or goal command sent while that turn
+was running. Natural automatic live goal recovery remains unverified. See the
+[portable verification receipt](paused-recovery-verification.json). Historical
+results below remain tied to their recorded source revisions.
+
 ## 2026-10-14: Enter withheld after an accessibility collision
 
 The 89-test suite includes a regression through the real terminal binding,
@@ -194,7 +226,7 @@ Enter and a subsequent Codex turn. Compare the bounded transition codes with
 what happened in the terminal. Do not treat the send label as proof of
 continuation.
 
-Also verify that OFF cancels pending work and that paused or limited goals,
+Also verify that OFF cancels pending work and that unowned paused or limited goals,
 drafts and newer in-progress turns cause no input. Actual acceptance should
 record the CLI version and desktop setup without publishing personal session
 bindings or terminal text.

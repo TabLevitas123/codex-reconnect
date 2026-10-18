@@ -1,6 +1,6 @@
 # Codex reconnect
 
-A local floating ON/OFF control for resuming a stalled Codex CLI goal. When
+A local floating ON/OFF control for resuming a stalled or unexpectedly paused Codex CLI goal. When
 connectivity and readiness allow, it activates the bound terminal, types
 `/goal resume`, and presses Enter. It starts OFF.
 
@@ -9,10 +9,10 @@ no API credentials. Its connectivity checks use unauthenticated HTTPS.
 
 Project: [TabLevitas123/codex-reconnect](https://github.com/TabLevitas123/codex-reconnect).
 
-The current implementation passes 89 focused tests. Terminal accessibility checks
+The current candidate passes 97 focused tests, including paused-goal recovery and ACTIVE verification. Terminal accessibility checks
 match the GTK bus owner's process before comparing window geometry. Unrelated
 applications with the same bounds no longer interrupt command delivery.
-An owned blocked goal can qualify when its latest turn failed with an unfamiliar ordinary technical error. Recovery no longer depends only on exact transport messages. Explicit pauses, limits, approvals, security or refusal states, authentication, quota, context limits, user interruption and ambiguous needed-user decisions remain protected.
+An owned blocked goal can qualify when its latest turn failed with an unfamiliar ordinary technical error. Recovery no longer depends only on exact transport messages. Limits, approvals, security or refusal states, authentication, quota, context limits and ambiguous needed-user decisions remain protected. ON also authorizes same-goal PAUSED/interrupted recovery after an observed active baseline. The schema has no pause reason, so accidental and deliberate Escape cannot be distinguished. Use OFF before an intentional stop. Visible stop commands still block input.
 
 Allowlisted transport failures can retry on new failed turns with a delay that grows from sixty seconds to five minutes. Unfamiliar ordinary failures stop after two consecutive automatic attempts until a new safe completed active turn or explicit OFF/ON rearm. Incident deduplication and all readiness guards still apply. Read [design and limits](docs/design.md) for the exact boundary.
 
@@ -60,14 +60,13 @@ thread, foreground TUI process, backend process and TTY. Follow
 The helper checks offline connectivity every thirty seconds and keeps pending
 same-goal recovery until safe or cancelled. It also handles qualified blocked technical failures, allowlisted typed
 transients and active-idle incidents. It protects observed
-pauses, limits, completion, drafts and approval states. Ambiguous stops stay
+unowned pauses, limits, completion, drafts and approval states. Ambiguous stops stay
 blocked. See [design and limits](docs/design.md).
 
 The control distinguishes unrecognized composer content, an unverified caret and
 an unfamiliar footer without recording their text. Previously verified
 same-goal recovery ownership survives unknown connectivity. A "Sent /goal resume"
-label confirms keyboard delivery only. It does not prove
-that Codex continued. The helper cannot promise perfect draft safety on X11.
+label confirms keyboard delivery only. A later "Verified: goal is ACTIVE" label requires fresh same-target, same-goal ACTIVE metadata. ACTIVE status alone does not prove a new turn or useful progress. The helper cannot promise perfect draft safety on X11.
 
 ## Development
 

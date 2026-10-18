@@ -47,6 +47,12 @@ Click OFF to turn monitoring ON. Click ON to cancel monitoring and pending
 effects. Closing the control disables it. Every launch starts OFF. The window
 stays above other windows while its process runs.
 
+ON also authorizes recovery of an owned PAUSED goal whose latest turn is
+INTERRUPTED with null error metadata. Let the helper observe ACTIVE first.
+Use OFF before an intentional pause or stop. The goal schema has no pause
+reason, so ON cannot distinguish deliberate Escape from accidental Escape.
+Visible stop commands still block, but unrecorded intent cannot be detected.
+
 Allow the helper to observe the active goal while online. A freshly enabled
 helper can also adopt its first observed blocked goal while online when the
 latest turn is an allowlisted transport failure. Unfamiliar blocked failures
@@ -90,7 +96,7 @@ yourself before editing or submitting it; the helper never clears it.
 | Composer caret position unverified | Confirm the selected session and resolve the input position manually. The helper does not move or clear it. |
 | Composer footer unrecognized | A changed layout cannot qualify as an empty draft. Preserve the input and report the layout change. |
 | Goal needs resume false | The latest turn may be unknown, interrupted, protected or still running. Blocked alone is insufficient; the latest turn must be a safely classified terminal failure. |
-| Protected goal | A pause, limit, completion or unknown goal status was observed. Protection does not clear automatically for that same goal. |
+| Protected goal | An unowned pause, limit, completion or unknown goal status was observed. Protection does not clear automatically for that same goal. |
 | Automatic retry limit | Inspect the repeated failure. Explicit OFF/ON rearms the counter but does not remove protection or incident deduplication. |
 | Transient retry backoff | Wait for the capped delay. A new failed turn and safe readiness are required before another transport retry. |
 | Recovery pending | Check connectivity and readiness. Pending intent survives unknown connectivity and observation gaps. |
@@ -110,3 +116,9 @@ time. They omit terminal text, drafts, objectives, queue payloads, thread IDs,
 window titles and credentials. Terminal text and typed error metadata are
 examined in memory. Keep your launch command private if its binding arguments
 identify a personal session. Review any diagnostic file before sharing it.
+
+After command delivery, the control waits for fresh same-target, same-goal
+ACTIVE metadata. "Verified: goal is ACTIVE after /goal resume" confirms that
+status observation. It does not establish a new turn or useful progress.
+After fifteen seconds without ACTIVE it reports unverified. The same incident
+is never typed again. OFF or a goal change cancels verification.

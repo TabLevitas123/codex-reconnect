@@ -19,7 +19,7 @@ import types
 from unittest.mock import patch
 
 SOURCE = Path(__file__).resolve().parents[1] / "scripts" / "codex_reconnect_toggle.py"
-SOURCE_SHA = "b6f2ce1454db30c290befcf74b13df1897f584645bedc8f1faa86e67f44c0d43"
+SOURCE_SHA = "f32c77f893e7adaeb9ea385e2853b9506c5a4b44ff08b81f6671cc1b5d592d56"
 REAL_CLOCK = time.monotonic
 REAL_SLEEP = time.sleep
 
@@ -57,7 +57,10 @@ def parse_arguments(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--receipt", type=Path, required=True)
     parser.add_argument("--start-unfocused", action="store_true")
-    parser.add_argument("--baseline-loss", action="store_true")
+    scenario = parser.add_mutually_exclusive_group()
+    scenario.add_argument("--baseline-loss", action="store_true")
+    scenario.add_argument("--paused-goal", action="store_true",
+                          help="Synthetic ACTIVE to PAUSED/interrupted recovery and ACTIVE acknowledgment")
     parser.add_argument("--close-guard", nargs=argparse.REMAINDER,
                         help="Optional final argument: audit executable and argv; hex window ID is appended, no shell")
     args = parser.parse_args(argv)
@@ -156,7 +159,8 @@ def main():
         private.chmod(0o700)
         active = private / "in-progress"
         failed = private / "failed"
-        files = [history_fixture(active, "inProgress"), history_fixture(failed, "failed", args.baseline_loss)]
+        files = [history_fixture(active, "inProgress"),
+                 history_fixture(failed, "interrupted" if args.paused_goal else "failed", args.baseline_loss)]
         fixture_pins = {str(p.relative_to(private)): digest(p) for p in files}
         frozen_goal = mod.Goal("owned-synthetic-goal", "active", None, 0, 0, False)
 
@@ -189,7 +193,8 @@ def main():
                 def goal_reader(thread_id, directory):
                     if thread_id != target.thread_id or directory not in (active, failed):
                         raise RuntimeError("OUTSIDE_PRIVATE_HISTORY")
-                    return (mod.Goal("owned-synthetic-goal", "blocked", None, 0, 0, False)
+                    return (mod.Goal("owned-synthetic-goal", "paused" if args.paused_goal else "blocked",
+                                     None, 0, 0, False)
                             if directory == failed else frozen_goal)
 
                 def composer(xid, expected_input="", binding=None):
@@ -274,13 +279,21 @@ def main():
                      patch.object(mod, "desktop_idle_ms", lambda: 30000), \
                      patch.object(mod, "internet_online", network):
                     assert mod.resumable_turn(active, target.thread_id) == (None, "owned-synthetic-turn")
-                    assert mod.resumable_turn(failed, target.thread_id, "blocked") == ("transport" if args.baseline_loss else "goal_stall", "owned-synthetic-turn")
+                    expected_stall = "paused" if args.paused_goal else ("transport" if args.baseline_loss else "goal_stall")
+                    assert mod.resumable_turn(failed, target.thread_id,
+                                              "paused" if args.paused_goal else "blocked") == (expected_stall, "owned-synthetic-turn")
                     for tick in range(0, 144, 2):
                         if abort.is_set() or REAL_CLOCK() - started > 25:
                             raise RuntimeError("REAL_WALL_TIMEOUT")
                         now[0] = float(tick)
                         if tick == 2:
                             observer.codex_dir = failed
+                        if args.paused_goal and dispatch and tick > dispatch[0]["at"]:
+                            # Only the owned text window acknowledges Enter. Returning
+                            # ACTIVE below is synthetic metadata, never a native goal.
+                            _, count, values = fresh_buffer()
+                            assert count == 1 and values == ("/goal resume",)
+                            observer.codex_dir = active
                         observation = observer.observe()
                         before = controller.action_count
                         in_controller[0] = True
@@ -321,7 +334,15 @@ def main():
                         activations = [argv[2] for argv in commands if argv[:2] == ["wmctrl", "-ia"]]
                         assert activations == [target.window_id, answers["other_xid"]]
                         assert dispatch[0]["started_unfocused"] and dispatch[0]["old_focus_restored"]
-                    receipt.update(status="PASS", baseline_loss=args.baseline_loss, start_unfocused=args.start_unfocused, probe_times=probes, observations=observations,
+                    if args.paused_goal:
+                        assert any(row["label"] == "Verified: goal is ACTIVE after /goal resume"
+                                   for row in observations)
+                        assert dispatch[0]["incident"] == ("owned-synthetic-goal", "owned-synthetic-turn")
+                        assert any(row["stall"] == "paused" and row["actions"] == 0 for row in observations)
+                    receipt.update(status="PASS", paused_goal=args.paused_goal,
+                                   active_ack_evidence="synthetic ACTIVE metadata after owned Enter" if args.paused_goal else "not exercised",
+                                   synthetic_active_ack_verified=args.paused_goal,
+                                   baseline_loss=args.baseline_loss, start_unfocused=args.start_unfocused, probe_times=probes, observations=observations,
                                    dispatch=dispatch, controller_action_count=1, returns=1,
                                    received=list(values), commands=commands,
                                    private_history_unchanged=True, synthetic_goal_unchanged=True,

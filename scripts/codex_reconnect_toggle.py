@@ -56,6 +56,7 @@ class Readiness:
     composer_idle: bool | None = None
     desktop_idle: bool | None = None
     goal_id: str | None = None
+    goal_status: str | None = None
     stall_kind: str | None = None
     incident_id: tuple | None = None
     empty_reason: str | None = None
@@ -64,7 +65,7 @@ class Readiness:
         if self.target != expected:
             return "Target identity changed or unknown"
         for name in self.__dataclass_fields__:
-            if name not in ("target", "command_pending", "composer_idle", "desktop_idle", "goal_id", "stall_kind", "incident_id", "empty_reason") and getattr(self, name) is not True:
+            if name not in ("target", "command_pending", "composer_idle", "desktop_idle", "goal_id", "stall_kind", "incident_id", "empty_reason", "goal_status") and getattr(self, name) is not True:
                 if name == "draft_empty" and self.empty_reason in COMPOSER_BLOCKERS:
                     return "Blocked: " + COMPOSER_BLOCKERS[self.empty_reason]
                 if name == "idle" and self.idle is False:
@@ -79,7 +80,7 @@ class Readiness:
         if self.target != expected:
             return "target_unknown_or_changed"
         for name in self.__dataclass_fields__:
-            if name not in ("target", "command_pending", "composer_idle", "desktop_idle", "goal_id", "stall_kind", "incident_id", "empty_reason"):
+            if name not in ("target", "command_pending", "composer_idle", "desktop_idle", "goal_id", "stall_kind", "incident_id", "empty_reason", "goal_status"):
                 value = getattr(self, name)
                 if value is not True:
                     if name == "draft_empty" and self.empty_reason in COMPOSER_BLOCKERS:
@@ -108,10 +109,11 @@ class TransitionDiagnostics:
 
     def _record(self, state: dict) -> None:
         events = {"sample", "off", "on", "recovery_pending", "pending_expired",
-                  "action_requested", "action_sent_unverified", "action_deferred", "action_failed"}
+                  "action_requested", "action_sent_unverified", "action_deferred", "action_failed",
+                  "resume_active_verified", "resume_active_unverified"}
         phases = {"off", "watching", "outage_pending", "outage", "recovery_pending"}
         guards = {name for name in Readiness.__dataclass_fields__ if name not in
-                  ("target", "command_pending", "composer_idle", "desktop_idle", "goal_id", "stall_kind", "incident_id", "empty_reason")}
+                  ("target", "command_pending", "composer_idle", "desktop_idle", "goal_id", "stall_kind", "incident_id", "empty_reason", "goal_status")}
         reasons = {"ready", "target_unknown_or_changed", "composer_busy", "desktop_recent_input",
                    "automatic_retry_limit", "transient_retry_backoff"}
         reasons |= set(COMPOSER_BLOCKERS)
@@ -239,6 +241,7 @@ class Controller:
         self.rearm_epoch = cycle.enable_epoch
         self.retry_goal_id: str | None = None
         self.retry_reason: str | None = None
+        self.verifying_resume: tuple[str, float, tuple | None] | None = None
 
     def accept(self, observation: Observation, now: float) -> None:
         self.retry_reason = None
@@ -251,6 +254,10 @@ class Controller:
             event = "sample"
             if not self.cycle.enabled:
                 event = "off"
+            elif self.label == "Verified: goal is ACTIVE after /goal resume":
+                event = "resume_active_verified"
+            elif self.label == "Unverified: goal not observed ACTIVE after /goal resume":
+                event = "resume_active_unverified"
             elif self.action_count > old_actions:
                 event = "action_requested"
             elif self.label == "Deferred recovery expired; waiting for another outage":
@@ -274,6 +281,7 @@ class Controller:
             # Explicit OFF/ON rearms attempts, not protected goals or incidents.
             self.consecutive_dispatches = 0
             self.charged_incidents.clear()
+            self.verifying_resume = None
         self.rearm_epoch = self.cycle.enable_epoch
         previous_sample = self.cycle.last_sample
         if not math.isfinite(now) or (previous_sample is not None and now < previous_sample):
@@ -295,8 +303,29 @@ class Controller:
             self.pending_since = self.ready_since = None
         if not self.cycle.enabled:
             self.label = "OFF"
+            self.verifying_resume = None
             return
-        named_stall = observation.readiness.stall_kind in ("transport", "active_idle", "goal_stall")
+        if self.verifying_resume is not None:
+            goal_id, sent_at, sent_incident = self.verifying_resume
+            fresh = observation.readiness
+            if fresh.goal_id is not None and fresh.goal_id != goal_id:
+                self.verifying_resume = None
+            elif (fresh.target == self.target and fresh.route_verified is True
+                  and fresh.goal_id == goal_id and fresh.goal_status == "active"):
+                self.verifying_resume = None
+                self.label = "Verified: goal is ACTIVE after /goal resume"
+                return
+            elif (now - sent_at >= 15 and fresh.incident_id is not None
+                  and fresh.incident_id != sent_incident):
+                # A new incident still uses the ordinary cooldown and retry caps.
+                self.verifying_resume = None
+            else:
+                self.pending_since = self.ready_since = None
+                self.label = ("Unverified: goal not observed ACTIVE after /goal resume"
+                              if now - sent_at >= 15 else
+                              "Sent /goal resume; ACTIVE transition unverified")
+                return
+        named_stall = observation.readiness.stall_kind in ("transport", "active_idle", "goal_stall", "paused")
         incident = observation.readiness.incident_id
         if named_stall and incident is not None and incident not in self.consumed_incidents and self.pending_since is None:
             self.pending_since, self.ready_since = now, None
@@ -365,11 +394,16 @@ class Controller:
             self.charged_incidents.add(incident)
         try:
             self.label = self.actuator.resume(self.target, observation.readiness)
+            if self.label.startswith("Sent /goal resume"):
+                self.effect_result(self.label, observation.readiness, now)
         except Exception:
             self.label = "Blocked: resume adapter failed"
 
 
     def effect_result(self, result: str, readiness: Readiness, now: float) -> None:
+        if (self.cycle.enabled and result.startswith("Sent /goal resume")
+                and readiness.goal_id is not None):
+            self.verifying_resume = (readiness.goal_id, now, readiness.incident_id)
         # Only these results guarantee that no typing was attempted. Unknown
         # errors and partial input consume the incident to avoid duplicate input.
         zero_input = {"Deferred: disabled or not ready", "Deferred: target no longer ready",
@@ -488,6 +522,10 @@ def resumable_turn(codex_dir: Path, thread_id: str, goal_status: str | None = No
     if row is None:
         return None, None
     turn_id, status, error_json = row
+    if status == "interrupted" and goal_status == "paused" and error_json is None:
+        # ON authorizes recovery of this state. Metadata cannot identify who
+        # pressed Escape; OFF is the reliable way to preserve an intended stop.
+        return "paused", turn_id
     if status == "completed":
         return "active_idle", turn_id
     if status != "failed" or not error_json:
@@ -583,6 +621,7 @@ class Composer:
     interruption: bool
     command_pending: bool = False
     empty_reason: str | None = None
+    pause_only_modal: bool = False
 
 
 PLACEHOLDERS = {"Ask Codex to do anything", "Ask Codex to do anything.",
@@ -624,10 +663,15 @@ def parse_composer(text: str, caret: int, expected_input: str = "") -> Composer:
     busy = "esc to interrupt" in current_status or bool(re.search(
         r"(?:^|\n)\s*[•●]?\s*(?:working|thinking|connecting|reconnecting|running)(?:\s|\.)",
         current_status))
-    modal = bool(re.search(r"approve|approval|allow this|press enter to continue|"
+    modal_matches = list(re.finditer(r"approve|approval|allow this|press enter to continue|"
                            r"\[y/n\]|history search|input disabled|attachment|image attached|"
+                           r"/goal\s+(?:pause|clear)\b|stopped by user|user requested (?:stop|pause)|"
                            r"goal paused|goal complete|budget.limit|usage.limit|authenticat|unauthorized|sign.in|"
                            r"quota|rate.limit|billing|cyber.policy|misalignment|safety|refusal|context.limit", recent))
+    modal = bool(modal_matches)
+    pause_only_modal = (modal and all(match.group() == "goal paused" for match in modal_matches)
+                        and all(re.fullmatch(r"\s*(?:[•●■]\s*)?goal paused[.!]?\s*", line)
+                                for line in recent.splitlines() if "goal paused" in line))
     interruption = bool(transport_errors)
     if expected_input:
         empty = raw_suffix == expected_input and caret == offset + len(prompt)
@@ -648,7 +692,7 @@ def parse_composer(text: str, caret: int, expected_input: str = "") -> Composer:
             empty_reason = "composer_caret_mismatch"
     elif not tail_ok:
         empty_reason = "composer_footer_unrecognized"
-    return Composer(empty and tail_ok, not busy, not modal, interruption, pending, empty_reason)
+    return Composer(empty and tail_ok, not busy, not modal, interruption, pending, empty_reason, pause_only_modal)
 
 
 @dataclass(frozen=True)
@@ -822,7 +866,10 @@ class LiveObserver:
             self.baseline_goal = self.outage_goal = None
             self.previous_online = None
             self.goal_epoch += 1
-        if goal.status not in ("active", "blocked") or (goal.token_budget is not None and goal.tokens_used >= goal.token_budget):
+        # Goal and turn rows can update separately. An owned pause waits for
+        # eligible latest-turn metadata rather than latching a transient mismatch.
+        owned_pause = goal.status == "paused" and self.baseline_goal == goal.goal_id
+        if (goal.status not in ("active", "blocked") and not owned_pause) or (goal.token_budget is not None and goal.tokens_used >= goal.token_budget):
             self.protected_goals.add(goal.goal_id)
         self.pause_seen = goal.goal_id in self.protected_goals
         # Startup may adopt only the first goal and a verified transport failure.
@@ -869,23 +916,26 @@ class LiveObserver:
             desktop_idle = desktop_idle_ms() >= 30000 if require_idle else True
             budget = goal.token_budget is None or goal.tokens_used < goal.token_budget
             stall_kind, turn_id = resumable_turn(self.codex_dir, self.target.thread_id, goal.status)
+            paused_recovery = (stall_kind == "paused" and self.baseline_goal == goal.goal_id
+                               and not self.pause_seen)
             if stall_kind == "active_idle" and goal.status != "active":
                 stall_kind = None
             if stall_kind and self.baseline_goal == goal.goal_id and not self.pause_seen:
                 self.outage_goal = goal.goal_id
             return Readiness(
                 target=self.target, route_verified=True, draft_empty=composer.empty,
-                idle=composer.idle and desktop_idle, no_modal=composer.no_modal,
-                no_explicit_pause=not self.pause_seen and goal.status in ("active", "blocked"),
+                idle=composer.idle and desktop_idle,
+                no_modal=composer.no_modal or (paused_recovery and composer.pause_only_modal),
+                no_explicit_pause=not self.pause_seen and (goal.status in ("active", "blocked") or paused_recovery),
                 budget_available=budget, recovery_owned=self.outage_goal is not None,
                 same_goal=goal.goal_id == self.outage_goal,
                 goal_needs_resume=stall_kind is not None and composer.idle
-                and goal.status in ("active", "blocked"),
+                and (goal.status in ("active", "blocked") or paused_recovery),
                 queue_empty=goal.queue_count == 0 and not goal.deferred,
                 command_pending=composer.command_pending,
                 composer_idle=composer.idle, desktop_idle=desktop_idle,
                 empty_reason=composer.empty_reason,
-                goal_id=goal.goal_id, stall_kind=stall_kind,
+                goal_id=goal.goal_id, goal_status=goal.status, stall_kind=stall_kind,
                 incident_id=(goal.goal_id, turn_id) if turn_id else None,
             )
         except Exception:
@@ -1023,6 +1073,8 @@ def run_ui(target: Target, observer: LiveObserver) -> None:
     controller = Controller(target, cycle, AsyncActuator(), ready_seconds=3, trace=diagnostics)
     tk.Label(root, text="Codex reconnect", bg="#15191f", fg="#f1f3f5",
              font=("Sans", 12, "bold")).pack(padx=16, pady=(12, 6))
+    tk.Label(root, text="ON may resume PAUSED/interrupted goals.\nUse OFF before an intentional stop.",
+             bg="#15191f", fg="#c1c7d0", justify="left").pack(padx=16, pady=4)
     tk.Label(root, textvariable=status, bg="#15191f", fg="#c1c7d0",
              wraplength=310, justify="left").pack(padx=16, pady=8)
 
@@ -1036,7 +1088,7 @@ def run_ui(target: Target, observer: LiveObserver) -> None:
         button.configure(text="ON" if cycle.enabled else "OFF",
                          bg="#236342" if cycle.enabled else "#343c49")
         next_poll = 0
-        status.set("ON. Waiting for an observed outage" if cycle.enabled else "OFF")
+        status.set("ON. Recovers owned PAUSED/interrupted goals; use OFF to keep a goal stopped" if cycle.enabled else "OFF")
         diagnostics({"event": "on" if cycle.enabled else "off", "phase": cycle.phase, "pending": False})
 
     button = tk.Button(root, text="OFF", command=toggle, bg="#343c49", fg="white",

@@ -21,7 +21,7 @@ TARGET = mod.Target("fixture-thread", "fixture-window", 12345, "42", "/fixture/c
 
 def ready():
     return mod.Readiness(target=TARGET, **{
-        field: True for field in mod.Readiness.__dataclass_fields__ if field not in ("target", "stall_kind", "incident_id", "empty_reason")})
+        field: True for field in mod.Readiness.__dataclass_fields__ if field not in ("target", "stall_kind", "incident_id", "empty_reason", "goal_status")})
 
 
 class MockActuator:
@@ -111,7 +111,7 @@ class ReconnectTests(unittest.TestCase):
 
     def test_each_unknown_or_false_guard_blocks(self):
         for field in mod.Readiness.__dataclass_fields__:
-            if field in ("target", "command_pending", "composer_idle", "desktop_idle", "goal_id", "stall_kind", "incident_id", "empty_reason"):
+            if field in ("target", "command_pending", "composer_idle", "desktop_idle", "goal_id", "stall_kind", "incident_id", "empty_reason", "goal_status"):
                 continue
             for value in (False, None):
                 with self.subTest(field=field, value=value):
@@ -1049,7 +1049,7 @@ class LiveMissRegressionTests(unittest.TestCase):
     def pipeline(self, before, message='request timed out', info='other',
                  turn_status='failed', goal_status='active', details=None, misalignment=None,
                  newer=False, protected=False, identity=True, prompt='Ask Codex to do anything',
-                 token_budget=None, tokens_used=0, online_after=None, turn_schedule=None, trace=None, cold_start=False, online_state=True, online_schedule=None, startup_closed=False):
+                 token_budget=None, tokens_used=0, online_after=None, turn_schedule=None, trace=None, cold_start=False, online_state=True, online_schedule=None, startup_closed=False, goal_schedule=None, no_error=False, delivered=False, labels=None):
         import sqlite3
         text=before+'› '+prompt+'\n? for shortcuts\n'
         composer=mod.parse_composer(text,text.index('›')+2)
@@ -1062,7 +1062,7 @@ class LiveMissRegressionTests(unittest.TestCase):
                 db.execute('CREATE TABLE thread_goal_continuation_deferrals(thread_id)')
             with sqlite3.connect(root/'thread_history_1.sqlite') as db:
                 db.execute('CREATE TABLE thread_turns(thread_id,turn_id,status,error_json,rollout_ordinal)')
-                db.execute('INSERT INTO thread_turns VALUES(?,?,?,?,?)',(TARGET.thread_id,'turn',turn_status,json.dumps(error),1))
+                db.execute('INSERT INTO thread_turns VALUES(?,?,?,?,?)',(TARGET.thread_id,'turn',turn_status,None if no_error else json.dumps(error),1))
                 if newer:
                     db.execute('INSERT INTO thread_turns VALUES(?,?,?,?,?)',(TARGET.thread_id,'new','inProgress',None,2))
             with sqlite3.connect(root/'queue_1.sqlite') as db:
@@ -1078,16 +1078,66 @@ class LiveMissRegressionTests(unittest.TestCase):
             if protected:
                 observer.protected_goals.add('goal')
             cycle=mod.ReconnectCycle();cycle.enable(True)
-            actuator=MockActuator();controller=mod.Controller(TARGET,cycle,actuator,ready_seconds=3,trace=trace)
+            actuator=MockActuator()
+            if delivered:
+                def resume(target, readiness):
+                    actuator.calls.append((target, readiness))
+                    return "Sent /goal resume. Continuation is not yet verified."
+                actuator.resume = resume
+            controller=mod.Controller(TARGET,cycle,actuator,ready_seconds=3,trace=trace)
             with patch.object(observer,'identity_ok',return_value=identity),patch.object(mod,'visible_composer',return_value=composer),patch.object(mod,'desktop_idle_ms',return_value=40000),patch.object(mod,'internet_online',side_effect=lambda: online_schedule.get(clock.return_value, True) if online_schedule is not None else (online_state if online_after is None or clock.return_value >= online_after else False)),patch.object(mod.time,'monotonic') as clock:
                 for now in range(0, 212 if turn_schedule else (80 if online_after is not None else 12), 2):
+                    if goal_schedule and now in goal_schedule:
+                        goal_state, turn_state = goal_schedule[now]
+                        with sqlite3.connect(root/'goals_1.sqlite') as db:
+                            db.execute('UPDATE thread_goals SET status=?', (goal_state,))
+                        with sqlite3.connect(root/'thread_history_1.sqlite') as db:
+                            db.execute('UPDATE thread_turns SET status=?,error_json=NULL', (turn_state,))
                     if turn_schedule and now in turn_schedule:
                         with sqlite3.connect(root/'thread_history_1.sqlite') as db:
                             db.execute('INSERT INTO thread_turns VALUES(?,?,?,?,?)',
                                        (TARGET.thread_id, turn_schedule[now], 'failed', json.dumps(error), now + 2))
                     clock.return_value=now
                     controller.accept(observer.observe(),now)
+                    if labels is not None: labels.append(controller.label)
             return len(actuator.calls),composer.idle
+
+    def test_owned_active_to_paused_interrupted_recovers_once(self):
+        options = dict(no_error=True, turn_status='inProgress',
+                       goal_schedule={4: ('paused', 'interrupted')})
+        self.assertEqual(self.pipeline('', **options)[0], 1)
+        self.assertEqual(self.pipeline('Goal paused.\n', **options)[0], 1)
+        options['goal_schedule'] = {2: ('paused', 'inProgress'), 4: ('paused', 'interrupted')}
+        self.assertEqual(self.pipeline('', **options)[0], 1)
+
+    def test_paused_delivery_verifies_active_through_real_observer_controller(self):
+        labels = []
+        calls, _ = self.pipeline('', no_error=True, turn_status='inProgress', delivered=True,
+                                 labels=labels,
+                                 goal_schedule={2: ('paused', 'interrupted'),
+                                                8: ('active', 'inProgress')})
+        self.assertEqual(calls, 1)
+        self.assertIn('Verified: goal is ACTIVE after /goal resume', labels)
+
+    def test_paused_interrupted_requires_owned_active_baseline_and_null_error(self):
+        options = dict(goal_status='paused', turn_status='interrupted', no_error=True)
+        self.assertEqual(self.pipeline('', **options)[0], 1)
+        for changes in ({'cold_start': True}, {'newer': True}, {'protected': True},
+                        {'no_error': False}, {'turn_status': 'completed'},
+                        {'turn_status': 'failed'}, {'turn_status': 'inProgress'},
+                        {'identity': False}, {'prompt': 'draft'},
+                        {'token_budget': 1, 'tokens_used': 1},
+                        {'online_state': None}, {'online_state': False},
+                        {'goal_status': 'complete'}, {'goal_status': 'budget_limited'},
+                        {'goal_status': 'usage_limited'}):
+            with self.subTest(changes=changes):
+                opts = dict(options); opts.update(changes)
+                self.assertEqual(self.pipeline('', **opts)[0], 0)
+        for notice in ('Approve this command?', 'Policy refusal', 'Goal complete',
+                       'Authentication failed', 'Goal paused.\nApprove this command?',
+                       'Goal paused by user', 'Use /goal pause to stop'):
+            with self.subTest(notice=notice):
+                self.assertEqual(self.pipeline(notice+'\n', **options)[0], 0)
 
     def test_unknown_connectivity_keeps_verified_same_goal_recovery_baseline(self):
         message = ('Error running remote compact task: stream disconnected before completion: '
@@ -1311,6 +1361,71 @@ class LiveMissRegressionTests(unittest.TestCase):
                         {'goal_status':'paused'}, {'goal_status':'complete'}):
             self.assertEqual(self.pipeline(error,**changes)[0],0,changes)
         self.assertEqual(self.pipeline(error+'Approve this command?\n')[0],0)
+
+
+class ResumeVerificationTests(unittest.TestCase):
+    def controller(self):
+        cycle = mod.ReconnectCycle(); cycle.enable(True)
+        return mod.Controller(TARGET, cycle, MockActuator())
+
+    def sent(self, controller):
+        item = replace(ready(), goal_id="goal", goal_status="paused",
+                       stall_kind="paused", incident_id=("goal", "turn"))
+        controller.effect_result("Sent /goal resume. Continuation is not yet verified.", item, 0)
+        return item
+
+    def test_sent_requires_fresh_same_target_same_goal_active_metadata(self):
+        controller = self.controller()
+        item = self.sent(controller)
+        for now, observed in ((2, item), (4, replace(item, goal_status="blocked")),
+                              (6, replace(item, goal_status="active", route_verified=False))):
+            controller.accept(mod.Observation(True, observed, now), now)
+            self.assertIn("unverified", controller.label.lower())
+        controller.accept(mod.Observation(True, replace(item, goal_status="active", idle=False), 8), 8)
+        self.assertEqual(controller.label, "Verified: goal is ACTIVE after /goal resume")
+        self.assertEqual(len(controller.actuator.calls), 0)
+
+    def test_stale_unknown_and_unchanged_paused_do_not_verify_or_repeat(self):
+        controller = self.controller()
+        item = self.sent(controller)
+        for now in (2, 4, 16, 80):
+            controller.accept(mod.Observation(True, item, now), now)
+        self.assertIn("not observed ACTIVE", controller.label)
+        self.assertEqual(len(controller.actuator.calls), 0)
+        controller.accept(mod.Observation(True, replace(item, goal_status="active"), 0), 82)
+        self.assertNotIn("Verified:", controller.label)
+
+    def test_new_transport_incident_can_retry_after_unverified_delivery(self):
+        controller = self.controller()
+        def resume(target, readiness):
+            controller.actuator.calls.append((target, readiness))
+            return "Sent /goal resume. Continuation is not yet verified."
+        controller.actuator.resume = resume
+        for index, now in enumerate((0, 60, 180)):
+            item = replace(ready(), goal_id="goal", goal_status="blocked",
+                           stall_kind="transport", incident_id=("goal", str(index)))
+            controller.accept(mod.Observation(True, item, now), now)
+        self.assertEqual(len(controller.actuator.calls), 3)
+
+    def test_paused_incidents_keep_two_attempt_ceiling_and_off_cancels(self):
+        controller = self.controller()
+        for index, now in enumerate((0, 70, 140)):
+            item = replace(ready(), goal_id="goal", goal_status="paused",
+                           stall_kind="paused", incident_id=("goal", str(index)))
+            controller.accept(mod.Observation(True, item, now), now)
+        self.assertEqual(len(controller.actuator.calls), 2)
+        controller.cycle.enable(False)
+        controller.accept(mod.Observation(True, item, 142), 142)
+        self.assertEqual(controller.label, "OFF")
+        self.assertEqual(len(controller.actuator.calls), 2)
+
+    def test_off_or_different_goal_cancels_verification(self):
+        for disabled in (False, True):
+            controller = self.controller(); item = self.sent(controller)
+            if disabled: controller.cycle.enable(False)
+            controller.accept(mod.Observation(True, replace(item, goal_id="new", goal_status="active"), 2), 2)
+            self.assertIsNone(controller.verifying_resume)
+            self.assertNotIn("Verified:", controller.label)
 
 
 if __name__ == "__main__":
