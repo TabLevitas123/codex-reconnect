@@ -552,7 +552,8 @@ def resumable_turn(codex_dir: Path, thread_id: str, goal_status: str | None = No
         # Match complete messages in memory; never generalize `other`.
         message = error.get("message")
         if message in ("request timed out",
-                       "stream disconnected before completion: Transport error: timeout"):
+                       "stream disconnected before completion: Transport error: timeout",
+                       "stream disconnected before completion: error sending request"):
             return "transport", turn_id
         if message in (
             "Error running remote compact task: stream disconnected before completion: Transport error: timeout",

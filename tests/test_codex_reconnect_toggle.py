@@ -1049,6 +1049,7 @@ class LiveMissRegressionTests(unittest.TestCase):
     def pipeline(self, before, message='request timed out', info='other',
                  turn_status='failed', goal_status='active', details=None, misalignment=None,
                  newer=False, protected=False, identity=True, prompt='Ask Codex to do anything',
+                 turn_messages=None,
                  token_budget=None, tokens_used=0, online_after=None, turn_schedule=None, trace=None, cold_start=False, online_state=True, online_schedule=None, startup_closed=False, goal_schedule=None, no_error=False, delivered=False, labels=None):
         import sqlite3
         text=before+'› '+prompt+'\n? for shortcuts\n'
@@ -1094,9 +1095,12 @@ class LiveMissRegressionTests(unittest.TestCase):
                         with sqlite3.connect(root/'thread_history_1.sqlite') as db:
                             db.execute('UPDATE thread_turns SET status=?,error_json=NULL', (turn_state,))
                     if turn_schedule and now in turn_schedule:
+                        scheduled_error = dict(error)
+                        if turn_messages and now in turn_messages:
+                            scheduled_error['message'] = turn_messages[now]
                         with sqlite3.connect(root/'thread_history_1.sqlite') as db:
                             db.execute('INSERT INTO thread_turns VALUES(?,?,?,?,?)',
-                                       (TARGET.thread_id, turn_schedule[now], 'failed', json.dumps(error), now + 2))
+                                       (TARGET.thread_id, turn_schedule[now], 'failed', json.dumps(scheduled_error), now + 2))
                     clock.return_value=now
                     controller.accept(observer.observe(),now)
                     if labels is not None: labels.append(controller.label)
@@ -1181,6 +1185,56 @@ class LiveMissRegressionTests(unittest.TestCase):
                                 turn_schedule={0: 'first', 70: 'second', 200: 'third'})
         self.assertEqual(calls, 2)
         self.assertEqual(events[-1]['reason'], 'automatic_retry_limit')
+
+    def test_error_sending_request_after_two_transport_attempts_uses_backoff(self):
+        events = []
+        message = 'stream disconnected before completion: error sending request'
+        calls, idle = self.pipeline('■ ' + message + '\n', message='request timed out',
+                                   goal_status='blocked', trace=events.append,
+                                   turn_schedule={0: 'first', 70: 'second', 100: 'third'},
+                                   turn_messages={100: message})
+        self.assertTrue(idle)
+        self.assertEqual(calls, 3)
+        self.assertEqual(events[52]['reason'], 'transient_retry_backoff')
+        self.assertEqual([index * 2 for index, event in enumerate(events)
+                          if event['event'] == 'action_requested'], [4, 74, 194])
+
+    def test_error_sending_request_requires_exact_signature_and_safe_state(self):
+        message = 'stream disconnected before completion: error sending request'
+        before = '■ ' + message + '\n'
+        self.assertEqual(self.pipeline(before, message=message), (1, True))
+        for altered in ('Historical note: ' + message, message.capitalize(), message + '\n',
+                        'error sending request', message + '; unauthorized',
+                        message + '; policy refusal', message + '; quota',
+                        message + '; user interrupted', message + '; HTTP 429'):
+            with self.subTest(message=altered):
+                self.assertEqual(self.pipeline(before, message=altered)[0], 0)
+        for changes in ({'info': 'cyberPolicy'}, {'info': 'unauthorized'},
+                        {'details': {}}, {'misalignment': {}}, {'newer': True},
+                        {'turn_status': 'inProgress'}, {'turn_status': 'interrupted'},
+                        {'goal_status': 'paused'}, {'goal_status': 'complete'},
+                        {'goal_status': 'budget_limited'}, {'goal_status': 'usage_limited'},
+                        {'token_budget': 1, 'tokens_used': 1}, {'protected': True},
+                        {'identity': False}, {'prompt': 'existing draft'}):
+            with self.subTest(changes=changes):
+                self.assertEqual(self.pipeline(before, message=message, **changes)[0], 0)
+        for notice in ('Working (esc to interrupt)', 'Approve this command?',
+                       'Goal paused by user', 'Use /goal pause to stop'):
+            with self.subTest(notice=notice):
+                self.assertEqual(self.pipeline(before + notice + '\n', message=message)[0], 0)
+
+    def test_altered_sending_request_failure_keeps_ordinary_attempt_limit(self):
+        message = 'stream disconnected before completion: error sending request'
+        for altered in ('Historical note: ' + message, message.capitalize(), message + '\n',
+                        'error sending request', message + '; unknown detail'):
+            with self.subTest(message=altered):
+                events = []
+                calls, _ = self.pipeline('■ ' + message + '\n', message='request timed out',
+                                        goal_status='blocked', trace=events.append,
+                                        turn_schedule={0: 'first', 70: 'second', 100: 'third'},
+                                        turn_messages={100: altered})
+                self.assertEqual(calls, 2)
+                self.assertEqual(events[-1]['reason'], 'automatic_retry_limit')
 
     def test_stale_interrupt_before_terminal_error_clears_through_real_pipeline(self):
         error='■ stream disconnected before completion: error sending request\n'

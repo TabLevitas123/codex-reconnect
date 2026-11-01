@@ -1,0 +1,72 @@
+{
+  "schema": "CODEX_RECONNECT_REQUEST_SEND_VERIFICATION_V1",
+  "date": "2026-11-01",
+  "status": "PASS_BOUNDED",
+  "source_sha256": "add82cefca23d77e1d99772cd630abadf5871cd901b85e50ce8562aba1afb405",
+  "tests_sha256": "683713b4bc45a1a2ccab5e4a79055735027b01d1c6e3f22beaaf12999c559d18",
+  "fixture_sha256": "34f6337db8a23acb7885b85f128d2cdeba45abfd4ccf27e68672b0cb2f504528",
+  "source_review": {
+    "status": "APPROVE_EXACT_SOURCE_FOR_OWNED_X11_CHECK",
+    "private_receipt_sha256": "72efe5dc7aa1eb6811d00c42af8c62c2dc1153120ae4cb72ca9fcabe036ca94e"
+  },
+  "classifier_regression": {
+    "exact_message": "stream disconnected before completion: error sending request",
+    "codexErrorInfo": "other",
+    "additionalDetails": null,
+    "misalignment": null,
+    "red_result": "Two dispatches instead of three after two earlier known transport attempts",
+    "green_dispatch_virtual_seconds": [
+      4,
+      74,
+      194
+    ],
+    "backoff_observed_virtual_seconds": 104,
+    "altered_ordinary_messages_keep_two_attempt_limit": true,
+    "protected_state_guards_preserved": true,
+    "scope": "Production SQLite observer and controller with synthetic data and mocked keyboard effects"
+  },
+  "focused_tests": {
+    "passed": 100,
+    "command": "/usr/bin/python3 tests/test_codex_reconnect_toggle.py"
+  },
+  "owned_x11_fixture": {
+    "status": "PASS",
+    "private_receipt_sha256": "d150980e7e182e4151435742aa0077a17a2437cae72484cef3557a5f9f0fb4ba",
+    "scenario": "baseline-loss with existing remote-compaction timeout signature",
+    "command": "/goal resume",
+    "command_count": 1,
+    "enter_count": 1,
+    "real_wall_seconds": 2.1150579410023056,
+    "started_unfocused": true,
+    "old_focus_restored": true,
+    "owned_target_closed": true,
+    "owned_companion_closed": true,
+    "external_close_guard_used": true,
+    "worker_joined": true,
+    "private_history_unchanged": true,
+    "synthetic_goal_unchanged": true,
+    "connectivity_and_metadata": "synthetic",
+    "target_observations": "owned fixture adapters",
+    "keyboard_adapter": "production X11Actuator",
+    "active_acknowledgment": "not exercised"
+  },
+  "post_install_observation": {
+    "private_install_receipt_sha256": "e4adefe2ea1b3f42d2ee66896baa14d2718cbd8adae5ec41f67b75b216ed07c2",
+    "installed_source_matches": true,
+    "old_helper_retired": true,
+    "starts_off": true,
+    "monitoring_enabled": true,
+    "online": true,
+    "reason": "composer_busy",
+    "goal_command_sent_while_turn_running": false,
+    "live_observation_evidence": "Desktop owner reported fresh live helper transitions after enabling monitoring"
+  },
+  "limits": [
+    "The new exact request-send signature and retry timing were exercised through synthetic SQLite tests with mocked keyboard effects.",
+    "The owned X11 fixture proves one guarded keyboard delivery using an existing timeout signature, scripted connectivity and synthetic metadata.",
+    "The fixture did not exercise a native goal transition or ACTIVE acknowledgment.",
+    "The post-install observation shows monitoring enabled and the current busy turn protected; it does not demonstrate live transport recovery.",
+    "Natural automatic live recovery and useful progress remain unverified.",
+    "This correction does not explain every historical missed recovery; earlier successful deliveries remain separate evidence."
+  ]
+}

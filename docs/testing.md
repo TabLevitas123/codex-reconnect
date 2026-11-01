@@ -1,5 +1,39 @@
 # Testing
 
+## 2026-11-01: request-send transport classification
+
+The joined SQLite observer/controller regression first reproduced a third
+failed turn being blocked after two earlier transport attempts. Its exact
+message was `stream disconnected before completion: error sending request`,
+with `codexErrorInfo` set to `other`, null additional details and null
+misalignment. That message fell through to the ordinary two-attempt limit.
+Adding only the complete message to the transport allowlist makes the third
+incident wait for backoff, then dispatch once. Altered ordinary messages keep
+the two-attempt limit. Protected errors, newer activity, drafts, identity
+changes and visible stop commands still block input.
+
+All 100 focused tests pass. These tests use synthetic private SQLite data and
+mocked keyboard effects.
+They establish this classifier failure and correction, without explaining
+every historical missed recovery or proving natural live continuation.
+
+Independent source review accepted the exact candidate. The desktop owner ran
+the owned watcher-to-X11 fixture from an unfocused target with its baseline-loss
+scenario. In 2.1151 seconds it delivered exactly one `/goal resume` and Enter,
+restored the companion's focus, preserved private fixture history and synthetic
+goal data, closed both owned windows after the external close guard passed,
+and joined its worker. This fixture used an existing remote-compaction timeout
+signature with scripted connectivity and synthetic metadata. The new request-send
+signature and its retry timing are covered by the SQLite tests above.
+
+The exact reviewed source was installed in the versioned helper, and the
+desktop owner restarted the prior helper and enabled monitoring. A fresh live
+observation showed ON, verified online connectivity and `composer_busy`.
+No native goal command was sent while the current turn was active. These
+checks establish the bounded keyboard route and busy-turn guard. Natural
+automatic recovery from the reported transport failure remains unverified.
+See the [portable verification receipt](request-send-verification.json).
+
 ## 2026-10-18: paused recovery candidate
 
 All 97 focused tests pass. `git diff --check` passes.

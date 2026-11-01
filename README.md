@@ -9,7 +9,7 @@ no API credentials. Its connectivity checks use unauthenticated HTTPS.
 
 Project: [TabLevitas123/codex-reconnect](https://github.com/TabLevitas123/codex-reconnect).
 
-The current candidate passes 97 focused tests, including paused-goal recovery and ACTIVE verification. Terminal accessibility checks
+The current candidate passes 100 focused tests, including request-send transport backoff, paused-goal recovery and ACTIVE verification. Terminal accessibility checks
 match the GTK bus owner's process before comparing window geometry. Unrelated
 applications with the same bounds no longer interrupt command delivery.
 An owned blocked goal can qualify when its latest turn failed with an unfamiliar ordinary technical error. Recovery no longer depends only on exact transport messages. Limits, approvals, security or refusal states, authentication, quota, context limits and ambiguous needed-user decisions remain protected. ON also authorizes same-goal PAUSED/interrupted recovery after an observed active baseline. The schema has no pause reason, so accidental and deliberate Escape cannot be distinguished. Use OFF before an intentional stop. Visible stop commands still block input.
