@@ -110,12 +110,15 @@ class TransitionDiagnostics:
     def _record(self, state: dict) -> None:
         events = {"sample", "off", "on", "recovery_pending", "pending_expired",
                   "action_requested", "action_sent_unverified", "action_deferred", "action_failed",
-                  "resume_active_verified", "resume_active_unverified"}
+                  "resume_active_verified", "resume_active_unverified",
+                  "command_typed", "command_reflected", "return_checked", "return_invoked"}
         phases = {"off", "watching", "outage_pending", "outage", "recovery_pending"}
         guards = {name for name in Readiness.__dataclass_fields__ if name not in
                   ("target", "command_pending", "composer_idle", "desktop_idle", "goal_id", "stall_kind", "incident_id", "empty_reason", "goal_status")}
         reasons = {"ready", "target_unknown_or_changed", "composer_busy", "desktop_recent_input",
-                   "automatic_retry_limit", "transient_retry_backoff"}
+                   "automatic_retry_limit", "transient_retry_backoff", "connectivity_unconfirmed",
+                   "actuator_disabled", "qualification_changed", "focus_changed",
+                   "reflection_timeout", "reflection_changed"}
         reasons |= set(COMPOSER_BLOCKERS)
         reasons |= {name + suffix for name in guards for suffix in ("_false", "_unknown")}
         record = {}
@@ -966,15 +969,38 @@ class X11Actuator:
     def __init__(self, fresh_readiness: Callable[..., Readiness], permitted: Callable[[], bool],
                  runner: Callable[[list[str]], str] = command,
                  clock: Callable[[], float] = time.monotonic,
-                 sleeper: Callable[[float], None] = time.sleep):
+                 sleeper: Callable[[float], None] = time.sleep, *,
+                 online: Callable[[], bool | None] | None = None,
+                 trace: Callable[[dict], None] | None = None):
         # Injected callbacks also let the owner test this adapter with an owned
         # dummy terminal. Production passes LiveObserver.readiness.
         self.fresh_readiness, self.permitted, self.runner = fresh_readiness, permitted, runner
         self.clock, self.sleeper = clock, sleeper
+        self.online, self.trace = online or internet_online, trace
+
+    def _record(self, event: str, reason: str | None = None) -> None:
+        if self.trace:
+            try:
+                self.trace({"event": event, **({"reason": reason} if reason else {})})
+            except Exception:
+                pass
+
+    def _online_now(self) -> bool:
+        try:
+            return self.online() is True
+        except Exception:
+            return False
 
     def resume(self, target: Target, readiness: Readiness) -> str:
-        if not self.permitted() or readiness.blocker(target):
-            return "Deferred: disabled or not ready"
+        def defer(message: str, reason: str) -> str:
+            self._record("action_deferred", reason)
+            return message
+        if not self.permitted():
+            return defer("Deferred: disabled or not ready", "actuator_disabled")
+        if readiness.blocker(target):
+            return defer("Deferred: disabled or not ready", readiness.reason_code(target))
+        if not self._online_now():
+            return defer("Deferred: fresh connectivity unconfirmed", "connectivity_unconfirmed")
         qualified = (readiness.goal_id, readiness.incident_id, readiness.stall_kind)
         def same_qualification(fresh: Readiness) -> bool:
             return (fresh.goal_id, fresh.incident_id, fresh.stall_kind) == qualified
@@ -983,46 +1009,66 @@ class X11Actuator:
         old_title = self.runner(["xdotool", "getwindowname", old_focus])
         fresh = self.fresh_readiness()
         if not self.permitted() or fresh.blocker(target) or not same_qualification(fresh):
-            return "Deferred: target no longer ready"
+            return defer("Deferred: target no longer ready", fresh.reason_code(target) if fresh.blocker(target) else "qualification_changed")
         if not self.permitted():
-            return "OFF"
+            return defer("OFF", "actuator_disabled")
         self.runner(["wmctrl", "-ia", target.window_id])
         fresh = self.fresh_readiness()
         if not self.permitted() or fresh.blocker(target) or not same_qualification(fresh):
-            return "Deferred: readiness changed after activation"
+            return defer("Deferred: readiness changed after activation", fresh.reason_code(target) if fresh.blocker(target) else "qualification_changed")
         if normalized_xid(self.runner(["xdotool", "getactivewindow"])) != normalized_xid(target.window_id):
-            return "Deferred: target did not activate"
+            return defer("Deferred: target did not activate", "focus_changed")
         if not self.permitted():
-            return "OFF"
+            return defer("OFF", "actuator_disabled")
         self.runner(["xdotool", "type", "--delay", "0", "--", "/goal resume"])
+        self._record("command_typed")
         # After typing, accept only the complete command we own. Never clear
         # altered input or press Return on an unexpected composer.
         deadline = self.clock() + 1
         while True:
             if not self.permitted():
-                return "OFF: command left unsubmitted"
+                return defer("OFF: command left unsubmitted", "actuator_disabled")
             fresh = self.fresh_readiness(expected_input="/goal resume", require_idle=False)
             if not self.permitted():
-                return "OFF: command left unsubmitted"
+                return defer("OFF: command left unsubmitted", "actuator_disabled")
             if normalized_xid(self.runner(["xdotool", "getactivewindow"])) != normalized_xid(target.window_id):
-                return "Deferred: command left unsubmitted; focus changed"
+                return defer("Deferred: command left unsubmitted; focus changed", "focus_changed")
             other_blocker = replace(fresh, draft_empty=True).blocker(target)
             if fresh.goal_id != readiness.goal_id:
-                return "Deferred: command left unsubmitted; goal changed"
+                return defer("Deferred: command left unsubmitted; goal changed", "qualification_changed")
             if not same_qualification(fresh):
-                return "Deferred: command left unsubmitted; incident changed"
+                return defer("Deferred: command left unsubmitted; incident changed", "qualification_changed")
             if other_blocker:
-                return "Deferred: command left unsubmitted; " + other_blocker
+                return defer("Deferred: command left unsubmitted; " + other_blocker, replace(fresh, draft_empty=True).reason_code(target))
             if fresh.draft_empty is True:
                 break
             if not fresh.command_pending:
-                return "Deferred: command left unsubmitted; Blocked: draft empty"
+                return defer("Deferred: command left unsubmitted; Blocked: draft empty", "reflection_changed")
             if self.clock() >= deadline:
-                return "Deferred: command reflection timed out; Blocked: draft empty"
+                return defer("Deferred: command reflection timed out; Blocked: draft empty", "reflection_timeout")
             self.sleeper(min(0.05, max(0, deadline - self.clock())))
+        self._record("command_reflected")
         if not self.permitted():
-            return "OFF: command left unsubmitted"
+            return defer("OFF: command left unsubmitted", "actuator_disabled")
+        if not self._online_now():
+            return defer("Deferred: command left unsubmitted; fresh connectivity unconfirmed", "connectivity_unconfirmed")
+        # Connectivity probes can take seconds. Recheck exact owned text and
+        # every safety guard after the probe, before submitting any input.
+        fresh = self.fresh_readiness(expected_input="/goal resume", require_idle=False)
+        if not self.permitted():
+            return defer("OFF: command left unsubmitted", "actuator_disabled")
+        if fresh.blocker(target) or not same_qualification(fresh):
+            return defer("Deferred: command left unsubmitted; readiness changed after connectivity check",
+                         fresh.reason_code(target) if fresh.blocker(target) else "qualification_changed")
+        if normalized_xid(self.runner(["xdotool", "getactivewindow"])) != normalized_xid(target.window_id):
+            return defer("Deferred: command left unsubmitted; focus changed", "focus_changed")
+        if not self.permitted():
+            return defer("OFF: command left unsubmitted", "actuator_disabled")
+        self._record("return_checked")
+        if not self.permitted():
+            return defer("OFF: command left unsubmitted", "actuator_disabled")
         self.runner(["xdotool", "key", "Return"])
+        self._record("return_invoked")
         # Restore only a still-existing old window, and only if target focus
         # remains ours. A focus change belongs to the user.
         if self.permitted() and normalized_xid(self.runner(["xdotool", "getactivewindow"])) == normalized_xid(target.window_id):
@@ -1059,7 +1105,7 @@ def run_ui(target: Target, observer: LiveObserver) -> None:
             effect_busy = True
             def effect() -> None:
                 permitted = lambda: not closed and cycle.enabled and token == generation
-                adapter = X11Actuator(observer.readiness, permitted)
+                adapter = X11Actuator(observer.readiness, permitted, trace=diagnostics)
                 try:
                     result = adapter.resume(target, readiness)
                 except Exception:
@@ -1220,7 +1266,7 @@ def run_fixture() -> None:
         editor.focus_set()
         def effect() -> None:
             try:
-                adapter = X11Actuator(validate, permitted.is_set)
+                adapter = X11Actuator(validate, permitted.is_set, online=lambda: True)
                 result = adapter.resume(target, validate())
             except Exception as exc:
                 result = "Fixture adapter failed: " + type(exc).__name__

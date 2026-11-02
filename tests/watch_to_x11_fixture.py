@@ -19,7 +19,7 @@ import types
 from unittest.mock import patch
 
 SOURCE = Path(__file__).resolve().parents[1] / "scripts" / "codex_reconnect_toggle.py"
-SOURCE_SHA = "add82cefca23d77e1d99772cd630abadf5871cd901b85e50ce8562aba1afb405"
+SOURCE_SHA = "24ec9f7459c2414efd5aef092f1841ce214ad384f4dfaf39d961dae2ce4d3914"
 REAL_CLOCK = time.monotonic
 REAL_SLEEP = time.sleep
 
@@ -57,6 +57,8 @@ def parse_arguments(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--receipt", type=Path, required=True)
     parser.add_argument("--start-unfocused", action="store_true")
+    parser.add_argument("--window-origin", nargs=2, type=int, metavar=("X", "Y"),
+                        help="Optional position for both owned fixture windows")
     scenario = parser.add_mutually_exclusive_group()
     scenario.add_argument("--baseline-loss", action="store_true")
     scenario.add_argument("--paused-goal", action="store_true",
@@ -95,10 +97,12 @@ def main():
                "limits": ["Synthetic fixture only, not natural automatic recovery",
                           "No run_ui generation/queue or GNOME/TTY qualification",
                           "No provider, live Codex DB, native goal or actual continuation proof"]}
+    window_geometry = "560x210" if args.window_origin is None else (
+        f"560x210{args.window_origin[0]:+d}{args.window_origin[1]:+d}")
     root = tk.Tk()
     root.title("Owned watcher-to-X11 fixture")
     root.configure(bg="#15191f")
-    root.geometry("560x210")
+    root.geometry(window_geometry)
     editor = tk.Text(root, width=46, height=3, bg="#222831", fg="white")
     editor.pack(padx=12, pady=12)
     tk.Label(root, text="Synthetic private watcher fixture. No command is executed.",
@@ -108,7 +112,7 @@ def main():
         other = tk.Toplevel(root)
         other.title("Owned background-focus companion")
         other.configure(bg="#15191f")
-        other.geometry("560x210")
+        other.geometry(window_geometry)
         tk.Label(other, text="Owned focus holder. No command input.",
                  bg="#15191f", fg="white").pack(padx=12, pady=24)
     returns = []
@@ -167,6 +171,7 @@ def main():
         def run_worker():
             now = [0.0]
             probes = []
+            submission_probes = []
             observations = []
             commands = []
             dispatch = []
@@ -205,8 +210,8 @@ def main():
                                         bool(expected_input and value != expected_input
                                              and expected_input.startswith(value)))
 
-                def network():
-                    probes.append(now[0])
+                def network(*, submission=True):
+                    (submission_probes if submission else probes).append(now[0])
                     if args.baseline_loss:
                         return None if now[0] == 2 else True
                     return now[0] == 0 or now[0] >= 62
@@ -263,7 +268,7 @@ def main():
 
                 cycle = mod.ReconnectCycle()
                 actuator = RecordedActuator(observer.readiness, permitted.is_set,
-                                            runner=safe_command, clock=REAL_CLOCK, sleeper=REAL_SLEEP)
+                                            runner=safe_command, clock=REAL_CLOCK, sleeper=REAL_SLEEP, online=network)
                 controller = mod.Controller(target, cycle, actuator, ready_seconds=3)
                 assert not cycle.enabled
                 observer.reset_cycle()
@@ -277,7 +282,7 @@ def main():
                      patch.object(mod, "read_goal", goal_reader), \
                      patch.object(mod, "visible_composer", composer), \
                      patch.object(mod, "desktop_idle_ms", lambda: 30000), \
-                     patch.object(mod, "internet_online", network):
+                     patch.object(mod, "internet_online", lambda: network(submission=False)):
                     assert mod.resumable_turn(active, target.thread_id) == (None, "owned-synthetic-turn")
                     expected_stall = "paused" if args.paused_goal else ("transport" if args.baseline_loss else "goal_stall")
                     assert mod.resumable_turn(failed, target.thread_id,
@@ -323,6 +328,7 @@ def main():
                     assert probes[:4] == ([0.0, 2.0, 4.0, 6.0] if args.baseline_loss else [0.0, 2.0, 32.0, 62.0])
                     assert all(b - a == 2 for a, b in zip(probes[3:], probes[4:]))
                     assert len(dispatch) == controller.action_count == count == 1
+                    assert submission_probes == [dispatch[0]["at"]] * 2
                     assert values == ("/goal resume",) and value == ""
                     assert commands.count(["xdotool", "type", "--delay", "0", "--", "/goal resume"]) == 1
                     assert commands.count(["xdotool", "key", "Return"]) == 1
@@ -342,7 +348,8 @@ def main():
                     receipt.update(status="PASS", paused_goal=args.paused_goal,
                                    active_ack_evidence="synthetic ACTIVE metadata after owned Enter" if args.paused_goal else "not exercised",
                                    synthetic_active_ack_verified=args.paused_goal,
-                                   baseline_loss=args.baseline_loss, start_unfocused=args.start_unfocused, probe_times=probes, observations=observations,
+                                   baseline_loss=args.baseline_loss, start_unfocused=args.start_unfocused, probe_times=probes,
+                                   submission_probe_times=submission_probes, observations=observations,
                                    dispatch=dispatch, controller_action_count=1, returns=1,
                                    received=list(values), commands=commands,
                                    private_history_unchanged=True, synthetic_goal_unchanged=True,

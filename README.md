@@ -1,5 +1,13 @@
 # Codex reconnect
 
+
+## Fresh submission guard candidate (2026-11-02)
+
+Independent review accepted one owned synthetic baseline-loss X11 fixture for source `24ec9f7459c2414efd5aef092f1841ce214ad384f4dfaf39d961dae2ce4d3914`. It typed `/goal resume` once and invoked Return once after two fresh submission probes, in 2.363 seconds; companion focus was restored, both owned windows closed, and the worker joined. Private fixture history and the synthetic goal were unchanged. This proves the owned fixture route only; it does not prove a natural outage recovery or live Codex continuation. The protected-window audit missed VS Code, although a separate observation recorded the qualified CLI window, so complete audit coverage is not claimed.
+
+The reviewed source is installed and bound to the qualified current CLI. The helper is ON and online, but its current guard blocks on unrecognized composer content; no CLI input was cleared and no live resume was sent. Natural outage recovery and the historical missed-Enter cause remain unproven. Installation is accepted at this bounded scope; broader optional coverage and publication remain pending. Test history remains 108 baseline passing plus 10 affected passing tests after two fixture constructor regressions; the full 110-test set was not run.
+
+
 A local floating ON/OFF control for resuming a stalled or unexpectedly paused Codex CLI goal. When
 connectivity and readiness allow, it activates the bound terminal, types
 `/goal resume`, and presses Enter. It starts OFF.
@@ -9,7 +17,7 @@ no API credentials. Its connectivity checks use unauthenticated HTTPS.
 
 Project: [TabLevitas123/codex-reconnect](https://github.com/TabLevitas123/codex-reconnect).
 
-The current candidate passes 100 focused tests, including request-send transport backoff, paused-goal recovery and ACTIVE verification. Terminal accessibility checks
+An earlier candidate snapshot recorded 100 focused tests, including request-send transport backoff, paused-goal recovery and ACTIVE verification; this historical count predates the separately recorded 108-test baseline and is not a full current-suite result. Terminal accessibility checks
 match the GTK bus owner's process before comparing window geometry. Unrelated
 applications with the same bounds no longer interrupt command delivery.
 An owned blocked goal can qualify when its latest turn failed with an unfamiliar ordinary technical error. Recovery no longer depends only on exact transport messages. Limits, approvals, security or refusal states, authentication, quota, context limits and ambiguous needed-user decisions remain protected. ON also authorizes same-goal PAUSED/interrupted recovery after an observed active baseline. The schema has no pause reason, so accidental and deliberate Escape cannot be distinguished. Use OFF before an intentional stop. Visible stop commands still block input.

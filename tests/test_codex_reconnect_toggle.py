@@ -1,6 +1,7 @@
 """Reconnect tests use synthetic observations and never access a Codex session."""
 
 from dataclasses import replace
+import ast
 import importlib.util
 from pathlib import Path
 import sys
@@ -418,7 +419,7 @@ class TerminalContextTests(unittest.TestCase):
                     patch.object(mod, 'resumable_turn', return_value=('transport', 'fixture-turn')), \
                     patch.object(mod, 'desktop_idle_ms', return_value=30001):
                 approved = observer.readiness()
-                result = mod.X11Actuator(observer.readiness, lambda: True, runner).resume(target, approved)
+                result = mod.X11Actuator(observer.readiness, lambda: True, runner, online=lambda: True).resume(target, approved)
             self.assertIn('Sent /goal resume', result)
             self.assertEqual(sum('type' in args for args in calls), 1)
             self.assertEqual(sum('key' in args for args in calls), 1)
@@ -428,7 +429,8 @@ class TerminalContextTests(unittest.TestCase):
 class X11AdapterTests(unittest.TestCase):
     def adapter(self, readies=None, disable_after=None, active="100"):
         target = replace(TARGET, window_id="100")
-        values = iter(readies or [replace(ready(), target=target)] * 3)
+        samples = readies or [replace(ready(), target=target)] * 3
+        values = iter(samples)
         calls = []
         enabled = [True]
         def runner(args):
@@ -438,7 +440,7 @@ class X11AdapterTests(unittest.TestCase):
             if args[1] == "getactivewindow":
                 return active
             return "fixture"
-        adapter = mod.X11Actuator(lambda **kwargs: next(values), lambda: enabled[0], runner)
+        adapter = mod.X11Actuator(lambda **kwargs: next(values, samples[-1]), lambda: enabled[0], runner, online=lambda: True)
         return adapter, target, calls
 
     def test_real_effect_sequence_uses_literal_command_and_return(self):
@@ -619,7 +621,7 @@ class X11AdapterTests(unittest.TestCase):
             return "100" if args[1] == "getactivewindow" else "fixture"
         def sleep(seconds):
             clock[0] += seconds
-        adapter = mod.X11Actuator(fresh, lambda: True, runner, lambda: clock[0], sleep)
+        adapter = mod.X11Actuator(fresh, lambda: True, runner, lambda: clock[0], sleep, online=lambda: True)
         return adapter, target, verified, calls, clock
 
     def test_partial_reflection_waits_once_without_retyping(self):
@@ -813,7 +815,7 @@ class GoalLatchTests(unittest.TestCase):
         def runner(args):
             calls.append(args)
             return "100" if args[1] == "getactivewindow" else "fixture"
-        actuator = mod.X11Actuator(lambda **kwargs: next(values), lambda: True, runner)
+        actuator = mod.X11Actuator(lambda **kwargs: next(values), lambda: True, runner, online=lambda: True)
         result = actuator.resume(target, before)
         self.assertIn("goal changed", result)
         self.assertEqual(sum("type" in args for args in calls), 1)
@@ -1038,7 +1040,7 @@ class IncidentBindingRegressionTests(unittest.TestCase):
                 def runner(args):
                     calls.append(args)
                     return '291' if 'getactivewindow' in args else 'fixture'
-                result=mod.X11Actuator(fresh,lambda:True,runner).resume(target,approved)
+                result=mod.X11Actuator(fresh,lambda:True,runner,online=lambda:True).resume(target,approved)
                 self.assertFalse(any('key' in args for args in calls),(stage,change))
                 self.assertEqual(sum('type' in args for args in calls),1 if stage=='enter' else 0)
                 if stage=='activation':self.assertFalse(any(args[0]=='wmctrl' for args in calls))
@@ -1480,6 +1482,138 @@ class ResumeVerificationTests(unittest.TestCase):
             controller.accept(mod.Observation(True, replace(item, goal_id="new", goal_status="active"), 2), 2)
             self.assertIsNone(controller.verifying_resume)
             self.assertNotIn("Verified:", controller.label)
+
+
+class FreshSubmissionTests(unittest.TestCase):
+    def exercise(self, network, changed=None, trace=None):
+        target = replace(TARGET, window_id="100")
+        fresh = [replace(ready(), target=target)]
+        permitted = [True]
+        active = ["100"]
+        calls = []
+        def runner(args):
+            calls.append(args)
+            return active[0] if args[1] == "getactivewindow" else "fixture"
+        def probe():
+            calls.append(["synthetic_probe"])
+            result = next(network)
+            if changed and calls.count(["synthetic_probe"]) == 2:
+                changed(fresh, permitted, active)
+            return result
+        kwargs = {} if trace is None else {"trace": trace.append}
+        with patch.object(mod, "internet_online", side_effect=probe):
+            actuator = mod.X11Actuator(lambda **kw:fresh[0], lambda:permitted[0], runner, **kwargs)
+            result = actuator.resume(target, fresh[0])
+        return result, calls
+
+    def test_offline_fresh_probe_never_types_or_submits(self):
+        result, calls = self.exercise(iter([False]))
+        self.assertIn("connectivity", result)
+        self.assertFalse(any("type" in call or "key" in call for call in calls))
+
+    def test_connectivity_loss_after_typing_never_submits_or_retypes(self):
+        for online in (False, None):
+            with self.subTest(online=online):
+                result, calls = self.exercise(iter([True, online]))
+                self.assertIn("connectivity", result)
+                self.assertEqual(sum("type" in call for call in calls), 1)
+                self.assertFalse(any("key" in call for call in calls))
+
+    def test_draft_and_pause_and_modal_guards_survive_slow_probe(self):
+        for field in ("draft_empty", "no_explicit_pause", "no_modal"):
+            with self.subTest(field=field):
+                result, calls = self.exercise(iter([True, True]),
+                    changed=lambda fresh, permitted, active: fresh.__setitem__(0, replace(fresh[0], **{field:False})))
+                self.assertNotIn("Sent", result)
+                self.assertFalse(any("key" in call for call in calls))
+                self.assertEqual(sum("type" in call for call in calls), 1)
+
+    def test_off_during_submission_probe_never_submits(self):
+        result, calls = self.exercise(iter([True, True]),
+            changed=lambda fresh, permitted, active: permitted.__setitem__(0, False))
+        self.assertNotIn("Sent", result)
+        self.assertFalse(any("key" in call for call in calls))
+
+    def test_focus_change_during_submission_probe_never_submits(self):
+        result, calls = self.exercise(iter([True, True]),
+            changed=lambda fresh, permitted, active: active.__setitem__(0, "200"))
+        self.assertIn("focus changed", result)
+        self.assertFalse(any("key" in call for call in calls))
+
+    def test_disable_during_final_diagnostic_never_submits(self):
+        target = replace(TARGET, window_id="100")
+        fresh = replace(ready(), target=target)
+        enabled, calls = [True], []
+        def trace(row):
+            if row['event'] == 'return_checked': enabled[0] = False
+        def runner(args):
+            calls.append(args)
+            return "100" if args[1] == 'getactivewindow' else 'fixture'
+        adapter = mod.X11Actuator(lambda **kw:fresh, lambda:enabled[0], runner,
+                                  online=lambda:True, trace=trace)
+        self.assertIn('unsubmitted', adapter.resume(target, fresh))
+        self.assertFalse(any('key' in call for call in calls))
+
+    def test_fresh_probe_and_exact_checks_precede_single_return(self):
+        trace = []
+        result, calls = self.exercise(iter([True, True]), trace=trace)
+        self.assertIn("Sent /goal resume", result)
+        self.assertEqual(sum("type" in call for call in calls), 1)
+        self.assertEqual(calls.count(["xdotool", "key", "Return"]), 1)
+        probes = [i for i, call in enumerate(calls) if call == ["synthetic_probe"]]
+        typing = next(i for i, call in enumerate(calls) if "type" in call)
+        submit = calls.index(["xdotool", "key", "Return"])
+        self.assertLess(probes[0], typing)
+        self.assertLess(typing, probes[1])
+        self.assertLess(probes[1], submit)
+        self.assertEqual([row["event"] for row in trace],
+                         ["command_typed", "command_reflected", "return_checked", "return_invoked"])
+
+    def test_diagnostic_records_only_fixed_milestones_and_guard_reasons(self):
+        trace = []
+        result, calls = self.exercise(iter([True, None]), trace=trace)
+        self.assertNotIn("Sent", result)
+        self.assertEqual(trace[-1], {"event":"action_deferred", "reason":"connectivity_unconfirmed"})
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "trace.jsonl"
+            diagnostics = mod.TransitionDiagnostics(path)
+            for row in trace: diagnostics(dict(row, secret="synthetic-secret"))
+            records = [json.loads(line) for line in path.read_text().splitlines()]
+            self.assertEqual(records[-1]["reason"], "connectivity_unconfirmed")
+            self.assertNotIn("synthetic-secret", path.read_text())
+            self.assertNotIn("/goal", path.read_text())
+
+
+class FixtureConnectivityInjectionTests(unittest.TestCase):
+    def construct(self, path, constructor_name, namespace):
+        tree = ast.parse(path.read_text())
+        calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call)
+                 and isinstance(node.func, ast.Name) and node.func.id == constructor_name]
+        self.assertEqual(len(calls), 1)
+        expression = compile(ast.Expression(calls[0]), '<synthetic fixture constructor>', 'eval')
+        with patch.object(mod, 'internet_online', side_effect=AssertionError('real connectivity forbidden')):
+            return eval(expression, namespace)
+
+    def test_dummy_fixture_constructor_captures_synthetic_positive_probe(self):
+        function = next(node for node in ast.parse(Path(mod.__file__).read_text()).body
+                        if isinstance(node, ast.FunctionDef) and node.name == 'run_fixture')
+        calls = [node for node in ast.walk(function) if isinstance(node, ast.Call)
+                 and isinstance(node.func, ast.Name) and node.func.id == 'X11Actuator']
+        self.assertEqual(len(calls), 1)
+        with patch.object(mod, 'internet_online', side_effect=AssertionError('real connectivity forbidden')):
+            actuator = eval(compile(ast.Expression(calls[0]), '<owned fixture constructor>', 'eval'),
+                {'X11Actuator':mod.X11Actuator, 'validate':lambda **kw:ready(),
+                 'permitted':SimpleNamespace(is_set=lambda:True)})
+            self.assertIs(actuator.online(), True)
+
+    def test_joined_fixture_constructor_captures_network_before_later_patch(self):
+        network = lambda:False
+        actuator = self.construct(Path(__file__).with_name('watch_to_x11_fixture.py'), 'RecordedActuator',
+            {'RecordedActuator':mod.X11Actuator, 'observer':SimpleNamespace(readiness=lambda **kw:ready()),
+             'permitted':SimpleNamespace(is_set=lambda:True), 'safe_command':lambda argv:'',
+             'REAL_CLOCK':lambda:0, 'REAL_SLEEP':lambda delay:None, 'network':network})
+        self.assertIs(actuator.online, network)
+        self.assertIs(actuator.online(), False)
 
 
 if __name__ == "__main__":

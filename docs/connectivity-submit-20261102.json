@@ -1,0 +1,58 @@
+{
+  "schema": "codex-reconnect.public-actual-evidence.v1",
+  "state": "ACCEPTED_OWNED_SYNTHETIC_X11_PROOF_AND_GUARDED_CURRENT_CLI_INSTALL",
+  "source_sha256": "24ec9f7459c2414efd5aef092f1841ce214ad384f4dfaf39d961dae2ce4d3914",
+  "source_review": "PASS_NARROW_FIXTURE_SOURCE",
+  "native_fixture": {
+    "verdict": "PASS_OWNED_SYNTHETIC_X11_PROOF_WITH_AUDIT_LIMIT",
+    "scope": "One owned synthetic baseline-loss X11 fixture invocation.",
+    "exit_code": 0,
+    "elapsed_seconds": 2.3629190779756755,
+    "command_count": 1,
+    "return_count": 1,
+    "controller_action_count": 1,
+    "fresh_submission_probe_count": 2,
+    "companion_focus_restored": true,
+    "worker_joined": true,
+    "owned_window_closed": true,
+    "owned_companion_closed": true,
+    "private_fixture_history_unchanged": true,
+    "synthetic_goal_unchanged": true,
+    "audit_limit": "The protected-window audit did not find codex_vscode_main; a separate read-only observation recorded the qualified CLI window. Complete protected-window coverage is not claimed.",
+    "limits": [
+      "No natural outage or live goal resume",
+      "No run_ui generation or GNOME/TTY qualification",
+      "No provider or actual Codex continuation proof"
+    ]
+  },
+  "installation_and_current_helper": {
+    "installed_source_matches_reviewed_sha256": true,
+    "source_sha256": "24ec9f7459c2414efd5aef092f1841ce214ad384f4dfaf39d961dae2ce4d3914",
+    "launcher_rebound_to_qualified_current_cli": true,
+    "current_cli_identity_qualified": true,
+    "helper_state": "ON",
+    "connectivity": "ONLINE",
+    "current_guard": "BLOCKED_COMPOSER_CONTENT_UNRECOGNIZED",
+    "cli_input_cleared": false,
+    "resume_sent_to_live_cli": false,
+    "natural_outage_resume_proven": false,
+    "helper_pid_and_window_ids_included": false
+  },
+  "test_boundary": {
+    "prior_baseline_pass_count": 108,
+    "affected_pass_count": 10,
+    "new_fixture_constructor_regressions": 2,
+    "full_110_test_run": false,
+    "broader_optional_coverage": "PENDING"
+  },
+  "historical_missed_enter_cause": "UNPROVEN",
+  "installation": "ACCEPTED_BOUNDED_INSTALL_AND_CURRENT_CLI_QUALIFICATION",
+  "publication": "PENDING",
+  "evidence_sha256": {
+    "independent_actual_review01": "7443d0e9e985eef18cacdf244010e84a070729848d17fbd09c7dc62ac294f8d9",
+    "native_result": "c7177733e681178f0b5d8877e3551d287f00157a81873c4da2424931a4529237",
+    "native_invocation": "b36d9292a5fc70c5e47317aec61bfc225be6c6c872481ff8c89372a3ac720d84",
+    "installation_receipt": "949b01022622a9c5e145fa3ff5d3b5446be4a75248900e5f478a6e4b798a6a1f",
+    "installation_activation": "1da62703320fe9bb1b885d663b2797c9e7426163f1675dd6846e4fd5b8c80d49"
+  }
+}

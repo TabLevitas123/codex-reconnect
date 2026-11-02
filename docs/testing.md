@@ -1,3 +1,11 @@
+# 2026-11-02: accepted bounded native fixture and guarded install
+
+Independent review accepted one owned synthetic baseline-loss X11 fixture for source `24ec9f7459c2414efd5aef092f1841ce214ad384f4dfaf39d961dae2ce4d3914`. It typed `/goal resume` once and invoked Return once after two fresh submission probes, in 2.363 seconds; companion focus was restored, both owned windows closed, and the worker joined. Private fixture history and the synthetic goal were unchanged. This proves the owned fixture route only; it does not prove a natural outage recovery or live Codex continuation. The protected-window audit missed VS Code, although a separate observation recorded the qualified CLI window, so complete audit coverage is not claimed.
+
+The reviewed source is installed and bound to the qualified current CLI. The helper is ON and online, but its current guard blocks on unrecognized composer content; no CLI input was cleared and no live resume was sent. Natural outage recovery and the historical missed-Enter cause remain unproven. Installation is accepted at this bounded scope; broader optional coverage and publication remain pending. Test history remains 108 baseline passing plus 10 affected passing tests after two fixture constructor regressions; the full 110-test set was not run.
+
+See [sanitized actual evidence](connectivity-submit-20261102.json).
+
 # Testing
 
 ## 2026-11-01: request-send transport classification

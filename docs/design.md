@@ -1,5 +1,20 @@
 # Design and limits
 
+## Fresh submission connectivity and diagnostics
+
+The current source candidate checks connectivity before typing `/goal resume`, then checks again after the exact command is reflected and before Return. A failed or unknown fresh probe leaves the command unsubmitted. Since a probe may take seconds, the adapter then rechecks ON permission, exact composer contents, target focus, readiness and the same goal/incident qualification before invoking Return. It does not clear the draft.
+
+Transition diagnostics use sanitized stages: `command_typed`, `command_reflected`, `return_checked` and `return_invoked`. Deferred actions record `action_deferred` with a bounded reason code such as `connectivity_unconfirmed`, `focus_changed`, `qualification_changed`, `reflection_timeout` or a readiness reason. Composer text and credentials are not recorded. `return_invoked` means the key-injection command returned; it does not prove that the CLI accepted the input or began a new turn.
+
+The fresh-connectivity source and fixture cadence correction received narrow independent source review, and the owned synthetic fixture passed independent actual review. The historical missed-Enter cause remains unproven.
+
+
+## Accepted synthetic submission proof and live guard
+
+Independent review accepted one owned synthetic baseline-loss X11 fixture for source `24ec9f7459c2414efd5aef092f1841ce214ad384f4dfaf39d961dae2ce4d3914`. It typed `/goal resume` once and invoked Return once after two fresh submission probes, in 2.363 seconds; companion focus was restored, both owned windows closed, and the worker joined. Private fixture history and the synthetic goal were unchanged. This proves the owned fixture route only; it does not prove a natural outage recovery or live Codex continuation. The protected-window audit missed VS Code, although a separate observation recorded the qualified CLI window, so complete audit coverage is not claimed.
+
+The reviewed source is installed and bound to the qualified current CLI. The helper is ON and online, but its current guard blocks on unrecognized composer content; no CLI input was cleared and no live resume was sent. Natural outage recovery and the historical missed-Enter cause remain unproven. Installation is accepted at this bounded scope; broader optional coverage and publication remain pending. Test history remains 108 baseline passing plus 10 affected passing tests after two fixture constructor regressions; the full 110-test set was not run.
+
 `ReconnectCycle` debounces network observations. `Controller` holds pending
 intent, readiness debounce, cooldown and incident deduplication. `LiveObserver`
 reads the qualified desktop and local metadata. `X11Actuator` performs the
