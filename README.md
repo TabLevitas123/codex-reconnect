@@ -33,6 +33,15 @@ The installed helper then recognized its live terminal and displayed
 Natural automatic live continuation remains unverified. Earlier verification
 records remain tied to their recorded source revisions.
 
+The November 3 update passes 113 synthetic tests and independent review. It
+recognizes the exact `{"detail":"Bad Request"}` failure under an ACTIVE goal
+with the ordinary two-attempt cap, and accepts the observed Codex 0.166 agent
+and warning footer. A live helper with a freshly verified backend binding
+reached ON, waiting for the busy CLI, with no action requests. Natural automatic
+continuation remains unverified. Relaunch with a fresh qualified binding when
+the backend changes. Restart begins a fresh local retry allowance because
+incident and attempt counters live only in memory.
+
 ## Supported setup
 
 Ubuntu with an X11 GNOME desktop and a single-tab GNOME Terminal window.

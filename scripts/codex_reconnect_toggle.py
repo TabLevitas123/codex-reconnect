@@ -564,6 +564,12 @@ def resumable_turn(codex_dir: Path, thread_id: str, goal_status: str | None = No
             "Transport error: network error: error decoding response body",
         ):
             return "transport", turn_id
+    if (goal_status == "active" and info == "other"
+            and error.get("additionalDetails") is None
+            and message == '{"detail":"Bad Request"}'):
+        # Observed terminal failure while the goal remains ACTIVE. This is a
+        # bounded ordinary stall, not evidence that arbitrary HTTP 400s retry.
+        return "goal_stall", turn_id
     if (goal_status == "blocked" and info == "other"
             and error.get("additionalDetails") is None
             and isinstance(message, str) and message.strip()):
@@ -648,7 +654,8 @@ def parse_composer(text: str, caret: int, expected_input: str = "") -> Composer:
     # Only blank rows and the known footer may follow an empty composer.
     tail = "".join(lines[index + 1:])
     tail_ok = all(not line.strip() or re.fullmatch(
-        r"\s*(?:\? for shortcuts(?:\s+.*)?|\d+% context left(?:\s+.*)?|"
+        r"\s*(?:← for agents · \? for shortcuts(?:[ \t]+⚠ [1-9]\d{0,3} warnings? · f2 to view)?|"
+        r"\? for shortcuts(?:\s+.*)?|\d+% context left(?:\s+.*)?|"
         r"(?i:gpt-)[\w.\-]+(?:\s+.*)?)\s*", line)
         for line in tail.splitlines())
     recent = "".join(lines[max(0, index - 12):]).lower()

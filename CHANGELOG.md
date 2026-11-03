@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-11-03: exact Bad Request and Codex 0.166 footer recovery
+
+- Recognize the exact `{"detail":"Bad Request"}` failure when metadata says
+  `other`, has no additional details or misalignment, and the goal remains
+  ACTIVE. Treat it as an ordinary stall with the existing two-attempt cap,
+  incident deduplication and readiness guards. Other HTTP 400 errors remain
+  unqualified.
+- Accept the anchored Codex 0.166 agent-navigation footer with its optional
+  warning count and `f2 to view` hint. Unknown footer content still blocks.
+- Pass 113 synthetic tests and independent review. Install the reviewed source,
+  replace a stale backend binding with a verified same-thread backend, and
+  observe ON waiting for the busy CLI with zero action requests. Natural
+  automatic continuation remains unverified.
+- Restart as an explicit fresh rearm. Private in-memory incident and attempt
+  counters cannot transfer; retain old logs, launcher backups and installed
+  versions for rollback.
+
 ## 2026-10-18: paused recovery candidate
 
 - Let ON recover a previously observed active goal after PAUSED/interrupted

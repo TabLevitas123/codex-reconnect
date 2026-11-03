@@ -1052,9 +1052,9 @@ class LiveMissRegressionTests(unittest.TestCase):
                  turn_status='failed', goal_status='active', details=None, misalignment=None,
                  newer=False, protected=False, identity=True, prompt='Ask Codex to do anything',
                  turn_messages=None,
-                 token_budget=None, tokens_used=0, online_after=None, turn_schedule=None, trace=None, cold_start=False, online_state=True, online_schedule=None, startup_closed=False, goal_schedule=None, no_error=False, delivered=False, labels=None):
+                 token_budget=None, tokens_used=0, online_after=None, turn_schedule=None, trace=None, cold_start=False, online_state=True, online_schedule=None, startup_closed=False, goal_schedule=None, no_error=False, delivered=False, labels=None, footer="? for shortcuts"):
         import sqlite3
-        text=before+'› '+prompt+'\n? for shortcuts\n'
+        text=before+'› '+prompt+'\n'+footer+'\n'
         composer=mod.parse_composer(text,text.index('›')+2)
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory)
@@ -1107,6 +1107,61 @@ class LiveMissRegressionTests(unittest.TestCase):
                     controller.accept(observer.observe(),now)
                     if labels is not None: labels.append(controller.label)
             return len(actuator.calls),composer.idle
+
+    def test_codex_0166_agent_warning_footer_recovers_exact_bad_request(self):
+        message = '{"detail":"Bad Request"}'
+        footer = '← for agents · ? for shortcuts     ⚠ 3 warnings · f2 to view'
+        self.assertEqual(self.pipeline('■ ' + message + '\n', message=message,
+                                       footer=footer), (1, True))
+        for changes in ({'prompt': 'existing draft'}, {'identity': False},
+                        {'online_state': False}, {'online_state': None},
+                        {'newer': True}, {'turn_status': 'inProgress'},
+                        {'goal_status': 'paused'}, {'protected': True}):
+            with self.subTest(changes=changes):
+                self.assertEqual(self.pipeline('■ ' + message + '\n', message=message,
+                                               footer=footer, **changes)[0], 0)
+        for altered in (footer + ' unexpected', 'prefix ' + footer,
+                        footer + '\nApprove this command?',
+                        footer.replace('f2', 'f3'), footer.replace('3', 'unknown'),
+                        footer.replace('warnings', 'requests'),
+                        footer.replace('←', '→'), 'arbitrary footer'):
+            with self.subTest(footer=altered):
+                self.assertEqual(self.pipeline('■ ' + message + '\n', message=message,
+                                               footer=altered)[0], 0)
+
+    def test_exact_bad_request_active_failure_recovers_once_with_bounded_retries(self):
+        message = '{"detail":"Bad Request"}'
+        before = '■ ' + message + '\n'
+        self.assertEqual(self.pipeline(before, message=message), (1, True))
+        events = []
+        calls, _ = self.pipeline(before, message=message, trace=events.append,
+                                 turn_schedule={0: 'first', 70: 'second', 200: 'third'})
+        self.assertEqual(calls, 2)
+        self.assertEqual(events[-1]['reason'], 'automatic_retry_limit')
+
+    def test_bad_request_requires_exact_metadata_and_all_existing_guards(self):
+        message = '{"detail":"Bad Request"}'
+        before = '■ ' + message + '\n'
+        for altered in ('HTTP 400', 'Bad Request', '{"detail": "Bad Request"}',
+                        message + '\n', message + '; unauthorized',
+                        '{"detail":"Permission denied"}'):
+            with self.subTest(message=altered):
+                self.assertEqual(self.pipeline(before, message=altered)[0], 0)
+        for changes in ({'info': 'unauthorized'}, {'info': 'cyberPolicy'},
+                        {'info': {'httpConnectionFailed': {'httpStatusCode': 400}}},
+                        {'details': {}}, {'misalignment': {}}, {'newer': True},
+                        {'turn_status': 'inProgress'}, {'turn_status': 'interrupted'},
+                        {'goal_status': 'paused'}, {'goal_status': 'complete'},
+                        {'goal_status': 'budget_limited'}, {'goal_status': 'usage_limited'},
+                        {'token_budget': 1, 'tokens_used': 1}, {'protected': True},
+                        {'identity': False}, {'prompt': 'existing draft'},
+                        {'online_state': False}, {'online_state': None}):
+            with self.subTest(changes=changes):
+                self.assertEqual(self.pipeline(before, message=message, **changes)[0], 0)
+        for notice in ('Working (esc to interrupt)', 'Approve this command?',
+                       'Goal paused by user', 'Use /goal pause to stop'):
+            with self.subTest(notice=notice):
+                self.assertEqual(self.pipeline(before + notice + '\n', message=message)[0], 0)
 
     def test_owned_active_to_paused_interrupted_recovers_once(self):
         options = dict(no_error=True, turn_status='inProgress',
