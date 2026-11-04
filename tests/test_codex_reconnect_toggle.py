@@ -624,6 +624,53 @@ class X11AdapterTests(unittest.TestCase):
         adapter = mod.X11Actuator(fresh, lambda: True, runner, lambda: clock[0], sleep, online=lambda: True)
         return adapter, target, verified, calls, clock
 
+    def test_exact_owned_text_with_stale_caret_waits_then_submits_once(self):
+        target = replace(TARGET, window_id="100")
+        text = "■ request timed out\n› /goal resume\n? for shortcuts\n"
+        start = text.index("›") + 2
+        def item(caret):
+            composer = mod.parse_composer(text, caret, "/goal resume")
+            return replace(ready(), target=target, draft_empty=composer.empty,
+                           command_pending=composer.command_pending,
+                           empty_reason=composer.empty_reason)
+        adapter, target, verified, calls, clock = self.reflected_adapter(
+            [item(start), item(start + len("/goal resume"))])
+        self.assertIn("Sent /goal resume", adapter.resume(target, verified))
+        self.assertEqual(sum("type" in call for call in calls), 1)
+        self.assertEqual(sum("key" in call for call in calls), 1)
+        self.assertEqual(clock[0], 0.05)
+
+    def test_exact_owned_text_with_stable_moved_caret_times_out_without_return(self):
+        target = replace(TARGET, window_id="100")
+        text = "■ request timed out\n› /goal resume\n? for shortcuts\n"
+        composer = mod.parse_composer(text, text.index("›") + 3, "/goal resume")
+        pending = replace(ready(), target=target, draft_empty=composer.empty,
+                          command_pending=composer.command_pending,
+                          empty_reason=composer.empty_reason)
+        adapter, target, verified, calls, clock = self.reflected_adapter([pending])
+        self.assertIn("timed out", adapter.resume(target, verified))
+        self.assertEqual(sum("type" in call for call in calls), 1)
+        self.assertFalse(any("key" in call for call in calls))
+        self.assertEqual(clock[0], 1)
+
+    def test_owned_text_caret_wait_rejects_foreign_text_unknown_footer_and_outside_caret(self):
+        target = replace(TARGET, window_id="100")
+        for suffix, footer, caret_shift in (("/goal resume changed", "? for shortcuts", 0),
+                                            ("/goal resume", "unknown footer", 0),
+                                            ("/goal resume", "? for shortcuts", -3)):
+            text = "■ request timed out\n› " + suffix + "\n" + footer + "\n"
+            composer = mod.parse_composer(text, text.index("›") + 2 + caret_shift, "/goal resume")
+            rejected = replace(ready(), target=target, draft_empty=composer.empty,
+                               command_pending=composer.command_pending,
+                               empty_reason=composer.empty_reason)
+            adapter, target, verified, calls, clock = self.reflected_adapter([rejected])
+            events = []
+            adapter.trace = events.append
+            self.assertIn("Blocked: draft empty", adapter.resume(target, verified))
+            self.assertEqual(clock[0], 0)
+            self.assertFalse(any("key" in call for call in calls))
+            self.assertEqual(events[-1].get("composer_reason"), composer.empty_reason)
+
     def test_partial_reflection_waits_once_without_retyping(self):
         target = replace(TARGET, window_id="100")
         complete = replace(ready(), target=target, command_pending=False)
@@ -710,7 +757,9 @@ class TransitionDiagnosticTests(unittest.TestCase):
             for i in range(100):
                 state = {"event": "sample", "phase": "watching", "online": bool(i % 2),
                          "reason": "composer_busy", "composer_idle": False,
-                         "secret": "synthetic unrecognized text", "target": "synthetic thread"}
+                         "secret": "synthetic unrecognized text", "target": "synthetic thread",
+                         "composer_reason": ["synthetic unrecognized text"],
+                         "command_pending": "synthetic text", "draft_empty": "synthetic text"}
                 logger(state)
                 logger(state)
             files = list(Path(task_temp).iterdir())

@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-11-04: bounded command-caret reflection candidate
+
+- Wait within the existing one-second deadline when the exact owned command
+  appears with a caret still inside that prompt. A matching end caret and all
+  submission guards remain required before one Return. A persistently moved
+  caret times out; foreign input and unknown layouts still block immediately.
+- Record fixed composer reason codes and Boolean reflection state without text.
+- Pass 116 tests and an isolated actual Codex/X11 submission with one injected
+  stale-caret snapshot, one Return and a CLI acknowledgment. The unchanged
+  baseline also submitted successfully. Historical diagnostics confirm a
+  pre-Enter reflection refusal but did not capture its exact parser subreason.
+- Independently reviewed and installed, then enabled as an explicit fresh
+  rearm. Fresh live checks show the CLI busy with no command or Return requests.
+  Private counters did not transfer. Natural continuation remains unverified. See
+  [verification](docs/caret-reflection-verification.json).
+
 ## 2026-11-03: exact Bad Request and Codex 0.166 footer recovery
 
 - Recognize the exact `{"detail":"Bad Request"}` failure when metadata says

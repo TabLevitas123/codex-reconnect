@@ -1,0 +1,81 @@
+{
+  "schema": "CARET_REFLECTION_VERIFICATION_V1",
+  "observed_at_utc": "2026-11-04T00:42:52.275344+00:00",
+  "status": "reviewed_installed_and_enabled",
+  "source_sha256": "8653f6cbc1aa0a87d3e59855c42693fda04556f3a500200a4003faaa5b0eb78b",
+  "tests_sha256": "60ca5e72c6e31dcc8643f2104a79e5e1c2cad7bcda92a63a8396f182e9929a6b",
+  "historical_failure": {
+    "command_typed": true,
+    "command_reflected": false,
+    "return_invoked": false,
+    "reason": "reflection_changed",
+    "exact_parser_subreason": "not captured"
+  },
+  "baseline_actual_x11": {
+    "source_sha256": "62e8a337f06b7186db3e4fa8f6e1a15516f0dd62a534de96f5d01452403563c4",
+    "type_count": 1,
+    "return_count": 1,
+    "cli_acknowledged": true
+  },
+  "regression": {
+    "before": "exact owned text plus stale in-prompt caret aborts immediately",
+    "after": "wait only, require exact text and end caret before one Return",
+    "stable_moved_caret": "one second timeout, no Return",
+    "foreign_text_unknown_footer_outside_caret": "immediate refusal, no Return",
+    "suite": "116 tests pass; strengthened diagnostic privacy test also passes"
+  },
+  "actual_x11_candidate": {
+    "type_count": 1,
+    "return_count": 1,
+    "fixture_cli_acknowledged": true,
+    "composer_empty_after_submit": true,
+    "stale_caret_injected": true,
+    "network_denied": true,
+    "live_cli_untouched": true,
+    "events": [
+      {
+        "event": "command_typed"
+      },
+      {
+        "event": "command_reflection_pending",
+        "composer_reason": "composer_caret_mismatch",
+        "draft_empty": false,
+        "command_pending": true,
+        "composer_idle": true,
+        "desktop_idle": true
+      },
+      {
+        "event": "command_reflected"
+      },
+      {
+        "event": "return_checked"
+      },
+      {
+        "event": "return_invoked"
+      }
+    ],
+    "duration_seconds": 0.7804959249915555,
+    "limits": [
+      "Synthetic separate Codex home and goal metadata",
+      "One stale-caret snapshot deliberately injected",
+      "Original incident exact parser subreason not captured",
+      "No live goal continuation proof"
+    ]
+  },
+  "live_watcher": {
+    "source_sha256": "8653f6cbc1aa0a87d3e59855c42693fda04556f3a500200a4003faaa5b0eb78b",
+    "enabled": true,
+    "identity_ok": true,
+    "goal_status": "active",
+    "latest_turn_status": "inProgress",
+    "observed_reason": "composer_busy",
+    "online": true,
+    "action_requested": 0,
+    "command_typed": 0,
+    "return_invoked": 0,
+    "fresh_rearm": true,
+    "private_counters_transferred": false,
+    "original_geometry_restored": true,
+    "natural_continuation_verified": false
+  }
+}

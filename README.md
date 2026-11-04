@@ -42,6 +42,17 @@ continuation remains unverified. Relaunch with a fresh qualified binding when
 the backend changes. Restart begins a fresh local retry allowance because
 incident and attempt counters live only in memory.
 
+A November 4 candidate waits up to the existing one-second reflection deadline
+when its exact command text appears before the caret reaches the command end.
+It still requires exact text, an end caret and all submission guards before one
+Return. Tests and an isolated actual Codex/X11 fixture passed with one deliberately
+injected stale-caret snapshot. The unchanged baseline also submitted successfully.
+The reported live failure stopped before Return, but its exact parser subreason
+was not captured. The independently reviewed source is installed and enabled. Fresh live checks
+show the CLI busy with no command or Return requests. Restart used an explicit
+fresh retry allowance; private counters did not transfer. See the
+[verification record](docs/caret-reflection-verification.json).
+
 ## Supported setup
 
 Ubuntu with an X11 GNOME desktop and a single-tab GNOME Terminal window.

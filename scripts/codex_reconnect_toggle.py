@@ -111,7 +111,7 @@ class TransitionDiagnostics:
         events = {"sample", "off", "on", "recovery_pending", "pending_expired",
                   "action_requested", "action_sent_unverified", "action_deferred", "action_failed",
                   "resume_active_verified", "resume_active_unverified",
-                  "command_typed", "command_reflected", "return_checked", "return_invoked"}
+                  "command_typed", "command_reflection_pending", "command_reflected", "return_checked", "return_invoked"}
         phases = {"off", "watching", "outage_pending", "outage", "recovery_pending"}
         guards = {name for name in Readiness.__dataclass_fields__ if name not in
                   ("target", "command_pending", "composer_idle", "desktop_idle", "goal_id", "stall_kind", "incident_id", "empty_reason", "goal_status")}
@@ -126,7 +126,9 @@ class TransitionDiagnostics:
             value = state.get(key)
             if isinstance(value, str) and value in allowed:
                 record[key] = value
-        for key in ("online", "pending", "sample_gap", "stale_observation", "composer_idle", "desktop_idle"):
+        if isinstance(state.get("composer_reason"), str) and state["composer_reason"] in COMPOSER_BLOCKERS:
+            record["composer_reason"] = state["composer_reason"]
+        for key in ("online", "pending", "sample_gap", "stale_observation", "composer_idle", "desktop_idle", "draft_empty", "command_pending"):
             value = state.get(key)
             if value is None or type(value) is bool:
                 record[key] = value
@@ -688,7 +690,12 @@ def parse_composer(text: str, caret: int, expected_input: str = "") -> Composer:
         empty = raw_suffix == expected_input and caret == offset + len(prompt)
         pending = (not empty and tail_ok and
                    ((expected_input.startswith(raw_suffix) and caret == offset + len(prompt))
-                    or (raw_suffix.rstrip() in PLACEHOLDERS and caret_here)))
+                    or (raw_suffix.rstrip() in PLACEHOLDERS and caret_here)
+                    # Text and caret are separate accessibility observations.
+                    # Exact owned text with an in-prompt caret may be a redraw.
+                    # This grants only the existing bounded wait, never Return.
+                    or (raw_suffix == expected_input
+                        and offset + prompt.index("›") + 2 <= caret < offset + len(prompt))))
     else:
         empty = raw_suffix.rstrip() in PLACEHOLDERS and caret_here
         pending = False
@@ -696,7 +703,8 @@ def parse_composer(text: str, caret: int, expected_input: str = "") -> Composer:
     empty_reason = None
     if not empty:
         if expected_input:
-            empty_reason = "composer_input_mismatch"
+            empty_reason = ("composer_caret_mismatch" if raw_suffix == expected_input
+                            else "composer_input_mismatch")
         elif raw_suffix.rstrip() not in PLACEHOLDERS:
             empty_reason = "composer_content_unrecognized"
         else:
@@ -985,10 +993,16 @@ class X11Actuator:
         self.clock, self.sleeper = clock, sleeper
         self.online, self.trace = online or internet_online, trace
 
-    def _record(self, event: str, reason: str | None = None) -> None:
+    def _record(self, event: str, reason: str | None = None,
+                readiness: Readiness | None = None) -> None:
         if self.trace:
             try:
-                self.trace({"event": event, **({"reason": reason} if reason else {})})
+                details = ({"composer_reason": readiness.empty_reason,
+                            "draft_empty": readiness.draft_empty,
+                            "command_pending": readiness.command_pending,
+                            "composer_idle": readiness.composer_idle,
+                            "desktop_idle": readiness.desktop_idle} if readiness else {})
+                self.trace({"event": event, **({"reason": reason} if reason else {}), **details})
             except Exception:
                 pass
 
@@ -999,8 +1013,8 @@ class X11Actuator:
             return False
 
     def resume(self, target: Target, readiness: Readiness) -> str:
-        def defer(message: str, reason: str) -> str:
-            self._record("action_deferred", reason)
+        def defer(message: str, reason: str, fresh: Readiness | None = None) -> str:
+            self._record("action_deferred", reason, fresh)
             return message
         if not self.permitted():
             return defer("Deferred: disabled or not ready", "actuator_disabled")
@@ -1050,9 +1064,10 @@ class X11Actuator:
             if fresh.draft_empty is True:
                 break
             if not fresh.command_pending:
-                return defer("Deferred: command left unsubmitted; Blocked: draft empty", "reflection_changed")
+                return defer("Deferred: command left unsubmitted; Blocked: draft empty", "reflection_changed", fresh)
+            self._record("command_reflection_pending", readiness=fresh)
             if self.clock() >= deadline:
-                return defer("Deferred: command reflection timed out; Blocked: draft empty", "reflection_timeout")
+                return defer("Deferred: command reflection timed out; Blocked: draft empty", "reflection_timeout", fresh)
             self.sleeper(min(0.05, max(0, deadline - self.clock())))
         self._record("command_reflected")
         if not self.permitted():
