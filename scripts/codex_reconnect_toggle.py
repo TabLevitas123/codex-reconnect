@@ -656,7 +656,9 @@ def parse_composer(text: str, caret: int, expected_input: str = "") -> Composer:
     # Only blank rows and the known footer may follow an empty composer.
     tail = "".join(lines[index + 1:])
     tail_ok = all(not line.strip() or re.fullmatch(
-        r"\s*(?:← for agents · \? for shortcuts(?:[ \t]+⚠ [1-9]\d{0,3} warnings? · f2 to view)?|"
+        r"\s*(?:← for agents · \? for shortcuts(?:[ \t]+(?:100|[1-9]?\d)% context left)?"
+        r"(?:[ \t]+⚠ [1-9]\d{0,3} warnings? · f2 to view)?|"
+        r"tab to queue message|"
         r"\? for shortcuts(?:\s+.*)?|\d+% context left(?:\s+.*)?|"
         r"(?i:gpt-)[\w.\-]+(?:\s+.*)?)\s*", line)
         for line in tail.splitlines())

@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-11-05: confirmed composer footer grammar
+
+- Recognize the observed context-left counter between agent shortcuts and the
+  warning hint, plus the exact `tab to queue message` footer. Existing busy,
+  latest-turn, input, approval, identity and connectivity guards remain required.
+- Reproduce rejection of the observed footer through the real parser and X11
+  adapter seam, then pass 119 tests. Unknown footer suffixes still block.
+- Natural diagnostics confirm another pre-Enter footer refusal. Its exact
+  rejected text was not retained; root's actual CLI probes establish the grammar
+  omissions. The preliminary unknown-footer wait patch is not retained.
+- Pass an actual separate Codex 0.166/X11 comparison. The old source refuses
+  before typing; the corrected source types once, invokes Return once, receives
+  the synthetic no-goal acknowledgment and leaves an empty composer. Readiness
+  and connectivity are synthetic, IP sockets are denied and credentials are
+  absent. This does not prove natural continuation. See
+  [verification](docs/footer-grammar-verification.json).
+
 ## 2026-11-04: bounded command-caret reflection candidate
 
 - Wait within the existing one-second deadline when the exact owned command

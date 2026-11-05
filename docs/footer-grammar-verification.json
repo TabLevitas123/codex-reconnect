@@ -1,0 +1,108 @@
+{
+  "schema": "FOOTER_GRAMMAR_VERIFICATION_V1",
+  "recorded_at_utc": "2026-11-05T07:51:32.382848+00:00",
+  "status": "native_submission_verified_activation_owned_by_root",
+  "source_sha256": "8c5131b8649725c0bdfed92082e80d10c4f15d9780790b31cd7ecb3df3d7cd77",
+  "tests_sha256": "d4d615f9fd9112192d7feea1396701a8bd7d4a5f772a8254254257503ae4bcfc",
+  "incident": {
+    "approx_utc": "2026-11-05T02:51:29Z",
+    "observed_events": [
+      "command_typed",
+      "command_reflection_pending",
+      "action_deferred"
+    ],
+    "refusal_reason": "reflection_changed",
+    "composer_reason": "composer_footer_unrecognized",
+    "return_invoked": false,
+    "exact_rejected_footer": "not captured"
+  },
+  "root_actual_cli_observations": [
+    {
+      "scope": "live busy CLI, root-owned draft probe only",
+      "footer": "tab to queue message",
+      "old_parser_result": "composer_footer_unrecognized",
+      "busy_guard_remains_required": true
+    },
+    {
+      "scope": "isolated idle Codex 0.166, empty tui.status_line",
+      "empty_prompt_footer": "\u2190 for agents \u00b7 ? for shortcuts            100% context left    \u26a0 1 warning \u00b7 f2 to view",
+      "old_parser_result": "composer_footer_unrecognized",
+      "owned_command_footer": "100% context left    \u26a0 1 warning \u00b7 f2 to view",
+      "owned_command_old_parser_result": "recognized"
+    }
+  ],
+  "correction": {
+    "nav_footer": "allow optional bounded 0-100 percent context-left segment before optional warning hint",
+    "queue_footer": "recognize only exact tab to queue message line",
+    "standalone_warning_footer": "not added; no direct standalone-rendering proof",
+    "unknown_footer": "still rejected immediately; wait-only candidate not retained",
+    "authority": "recognition grants no action authority; existing composer idle, latest-turn, identity, goal, queue, approval, input and connectivity guards unchanged"
+  },
+  "tests": {
+    "before": "actual parser-to-adapter regression rejects observed context footer",
+    "after": "119 tests pass, including one Return with recognized footers and refusal for unknown suffixes and protected states",
+    "command": "python3 -m unittest discover -s tests -p 'test_codex_reconnect_toggle.py'",
+    "outcome": "119 tests passed"
+  },
+  "actual_candidate_x11_submission": {
+    "schema": "reconnect-footer-native.v1",
+    "results": [
+      {
+        "source_sha256": "8653f6cbc1aa0a87d3e59855c42693fda04556f3a500200a4003faaa5b0eb78b",
+        "result": "Deferred: disabled or not ready",
+        "initial_blocker": "composer_footer_unrecognized",
+        "type_count": 0,
+        "return_count": 0,
+        "events": [
+          {
+            "event": "action_deferred",
+            "reason": "composer_footer_unrecognized"
+          }
+        ],
+        "fixture_cli_acknowledged": false,
+        "composer_empty_after": false
+      },
+      {
+        "source_sha256": "8c5131b8649725c0bdfed92082e80d10c4f15d9780790b31cd7ecb3df3d7cd77",
+        "result": "Sent /goal resume. Continuation is not yet verified.",
+        "initial_blocker": null,
+        "type_count": 1,
+        "return_count": 1,
+        "events": [
+          {
+            "event": "command_typed"
+          },
+          {
+            "event": "command_reflected"
+          },
+          {
+            "event": "return_checked"
+          },
+          {
+            "event": "return_invoked"
+          }
+        ],
+        "fixture_cli_acknowledged": true,
+        "composer_empty_after": true
+      }
+    ],
+    "network_ip_socket_denied": true,
+    "credentials_absent": true,
+    "live_cli_untouched": true,
+    "limits": [
+      "Synthetic readiness and connectivity, real production parser and X11 actuator",
+      "Separate actual Codex 0.166 TUI, no live goal or natural outage continuation",
+      "Original historical rejected footer text unavailable"
+    ]
+  },
+  "natural_continuation_verified": false,
+  "prior_fixture_failures": {
+    "retained_privately": true,
+    "types": [
+      "source pin preflight mismatch",
+      "cross-module dataclass mismatch"
+    ],
+    "return_invoked": false
+  },
+  "activation": "Root coordinates installation and fresh rearm separately; this receipt does not claim live continuation."
+}

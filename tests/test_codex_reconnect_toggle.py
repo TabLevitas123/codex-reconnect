@@ -624,6 +624,39 @@ class X11AdapterTests(unittest.TestCase):
         adapter = mod.X11Actuator(fresh, lambda: True, runner, lambda: clock[0], sleep, online=lambda: True)
         return adapter, target, verified, calls, clock
 
+    def test_observed_context_footer_and_nonempty_hints_submit_once(self):
+        target = replace(TARGET, window_id="100")
+        initial_footer = ("  ← for agents · ? for shortcuts            "
+                          "100% context left    ⚠ 1 warning · f2 to view")
+        def parsed(suffix, footer, expected=""):
+            text = "■ request timed out\n› " + suffix + "\n" + footer + "\n"
+            caret = text.index("›") + 2 + (len(suffix) if expected else 0)
+            c = mod.parse_composer(text, caret, expected)
+            return replace(ready(), target=target, draft_empty=c.empty, idle=c.idle,
+                           no_modal=c.no_modal, command_pending=c.command_pending,
+                           empty_reason=c.empty_reason)
+        initial = parsed("Ask Codex to do anything", initial_footer)
+        for footer in ("100% context left    ⚠ 1 warning · f2 to view",
+                       "tab to queue message"):
+            with self.subTest(footer=footer):
+                typed = parsed("/goal resume", footer, "/goal resume")
+                adapter, target, calls = self.adapter([initial, initial, typed, typed])
+                self.assertIn("Sent /goal resume", adapter.resume(target, initial))
+                self.assertEqual(sum("type" in call for call in calls), 1)
+                self.assertEqual(sum("key" in call for call in calls), 1)
+
+    def test_context_and_hint_footer_grammar_still_rejects_unknown_text(self):
+        for footer in ("← for agents · ? for shortcuts 101% context left",
+                       "← for agents · ? for shortcuts 100% context left unexpected",
+                       "⚠ 4 warnings · f2 to view", "⚠ 4 warnings · f3 to view",
+                       "tab to queue message unexpected",
+                       "tab to queue message\nforeign draft"):
+            with self.subTest(footer=footer):
+                text = "■ request timed out\n› /goal resume\n" + footer + "\n"
+                caret = text.index("›") + 2 + len("/goal resume")
+                c = mod.parse_composer(text, caret, "/goal resume")
+                self.assertFalse(c.empty or c.command_pending)
+
     def test_exact_owned_text_with_stale_caret_waits_then_submits_once(self):
         target = replace(TARGET, window_id="100")
         text = "■ request timed out\n› /goal resume\n? for shortcuts\n"
@@ -1156,6 +1189,17 @@ class LiveMissRegressionTests(unittest.TestCase):
                     controller.accept(observer.observe(),now)
                     if labels is not None: labels.append(controller.label)
             return len(actuator.calls),composer.idle
+
+    def test_known_queue_hint_preserves_latest_turn_busy_and_approval_guards(self):
+        before = "■ request timed out\n"
+        self.assertEqual(self.pipeline(before, footer="tab to queue message")[0], 1)
+        for changes in ({"turn_status": "inProgress"}, {"newer": True},
+                        {"goal_status": "paused"}, {"identity": False},
+                        {"online_state": False}, {"prompt": "existing draft"}):
+            with self.subTest(changes=changes):
+                self.assertEqual(self.pipeline(before, footer="tab to queue message", **changes)[0], 0)
+        for notice in ("Working (esc to interrupt)", "Approve this command?"):
+            self.assertEqual(self.pipeline(before + notice + "\n", footer="tab to queue message")[0], 0)
 
     def test_codex_0166_agent_warning_footer_recovers_exact_bad_request(self):
         message = '{"detail":"Bad Request"}'

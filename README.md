@@ -53,6 +53,16 @@ show the CLI busy with no command or Return requests. Restart used an explicit
 fresh retry allowance; private counters did not transfer. See the
 [verification record](docs/caret-reflection-verification.json).
 
+The November 5 correction recognizes two observed Codex footer forms: a context
+counter between agent shortcuts and warning hints, and the exact `tab to queue
+message` line. Existing readiness guards remain required. Its 119 tests pass.
+An actual separate Codex 0.166/X11 comparison shows the old source refusing
+before typing and the corrected source typing once, invoking Return once and
+receiving the synthetic no-goal acknowledgment. The fixture uses synthetic
+readiness/connectivity with IP sockets denied and no credentials. Natural
+continuation remains unverified; the original rejected footer text was not
+retained. See the [verification record](docs/footer-grammar-verification.json).
+
 ## Supported setup
 
 Ubuntu with an X11 GNOME desktop and a single-tab GNOME Terminal window.
